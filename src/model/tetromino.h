@@ -17,6 +17,7 @@ class Tetromino {
     private:
         TetrominoType type;    
         int rotation_state;
+        int colorId;
         Point board_position;
         std::vector<Point> blocks;
     
