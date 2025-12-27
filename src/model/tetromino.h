@@ -53,12 +53,12 @@ class Tetromino {
             return rotation_state;
         }
 
-        void rotateAntiClockwise(){
+        void rotateClockwise(){
             rotation_state = (rotation_state + 1)%4;
             for (auto& block : blocks){
                 int temp = block.x;
-                block.x = block.y;
-                block.y = -temp;
+                block.x = -block.y;
+                block.y = temp;
             }
         }
 };
