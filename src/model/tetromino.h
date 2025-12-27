@@ -50,6 +50,11 @@ class Tetromino {
         std::vector<Point> getBlocks() const {
             return blocks;
         }
+
+        int getColorId() const {
+            return colorId;
+        }
+
         int getRotationState() const {
             return rotation_state;
         }
