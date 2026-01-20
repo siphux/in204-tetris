@@ -29,6 +29,7 @@ public:
     // Accessors for rendering
     const Board& board() const;
     const Tetromino& currentPiece() const;
+    const Tetromino& nextPiece() const;
     int pieceX() const;
     int pieceY() const;
     int score() const;
@@ -37,6 +38,7 @@ public:
 private:
     Board m_board;
     Tetromino m_currentPiece;
+    Tetromino m_nextPiece;
     Score m_score;
     Level m_level;
 

@@ -3,6 +3,7 @@
 
 GameState::GameState()
     : m_currentPiece(TetrominoType::O),
+      m_nextPiece(static_cast<TetrominoType>(rand() % 7)),
       m_x(4), m_y(0),
       m_fallTimer(0.f) {}
 
@@ -80,6 +81,7 @@ void GameState::lockPiece() {
 // Accessors
 const Board& GameState::board() const { return m_board; }
 const Tetromino& GameState::currentPiece() const { return m_currentPiece; }
+const Tetromino& GameState::nextPiece() const { return m_nextPiece; }
 int GameState::pieceX() const { return m_x; }
 int GameState::pieceY() const { return m_y; }
 int GameState::score() const { return m_score.value(); }
@@ -87,8 +89,13 @@ int GameState::level() const { return m_level.current(); }
 
 // Spawn a new random piece at the top
 void GameState::spawnNewPiece() {
+    // Move next piece to current
+    m_currentPiece = m_nextPiece;
+    
+    // Generate new next piece
     TetrominoType t = static_cast<TetrominoType>(rand() % 7);
-    m_currentPiece = Tetromino(t);
+    m_nextPiece = Tetromino(t);
+    
     m_x = 4;
     m_y = 0;
     // TODO: check for game over (collision at spawn)
