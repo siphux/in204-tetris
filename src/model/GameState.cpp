@@ -93,4 +93,3 @@ void GameState::spawnNewPiece() {
     m_y = 0;
     // TODO: check for game over (collision at spawn)
 }
-
