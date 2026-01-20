@@ -20,14 +20,16 @@ public:
     bool isLeftPressed() const;
     bool isRightPressed() const;
     bool isDownPressed() const;
-    bool isRotatePressed() const;
+    bool isRotateClockwisePressed() const;
+    bool isRotateCounterClockwisePressed() const;
     
-    // Reset rotation flag (called after processing rotation)
-    void resetRotateFlag();
+    // Reset rotation flags (called after processing rotation)
+    void resetRotateFlags();
 
 private:
     bool m_leftPressed;
     bool m_rightPressed;
     bool m_downPressed;
-    bool m_rotatePressed;
+    bool m_rotateClockwisePressed;
+    bool m_rotateCounterClockwisePressed;
 };

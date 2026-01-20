@@ -6,6 +6,9 @@ GameController::GameController()
 void GameController::handleEvent(const sf::Event& event) {
     // Handle key press/release events
     if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>()) {
+        if (keyPressed->code == sf::Keyboard::Key::R && m_gameState.isGameOver()) {
+            m_gameState.reset();
+        }
         m_inputHandler.handleKeyPress(keyPressed->code);
     }
     
@@ -47,10 +50,14 @@ void GameController::processContinuousInput() {
 
 void GameController::processDiscreteInput() {
     // Handle rotation (instant, no delay)
-    if (m_inputHandler.isRotatePressed()) {
-        // TODO: Add rotation method to GameState (Day 2)
-        // m_gameState.rotatePiece();
-        m_inputHandler.resetRotateFlag();
+    if (m_inputHandler.isRotateClockwisePressed()) {
+        m_gameState.rotateClockwise();
+        m_inputHandler.resetRotateFlags();
+    }
+    
+    if (m_inputHandler.isRotateCounterClockwisePressed()) {
+        m_gameState.rotateCounterClockwise();
+        m_inputHandler.resetRotateFlags();
     }
 }
 
@@ -63,6 +70,5 @@ GameState& GameController::getGameState() {
 }
 
 bool GameController::isGameOver() const {
-    // TODO: Implement game over detection (Day 2)
-    return false;
+    return m_gameState.isGameOver();
 }

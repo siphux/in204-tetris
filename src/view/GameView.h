@@ -15,9 +15,14 @@ private:
     static constexpr int BoardOffsetX = 50;
     static constexpr int BoardOffsetY = 50;
 
+    sf::Font m_font;
+    bool m_fontLoaded;
+
     sf::Color colorForId(int colorId) const;
 
-    void drawBoard(sf::RenderWindow& window, const Board& board);
+    void drawBoard(sf::RenderWindow& window, const Board& board, const GameState& state);
     void drawCurrentPiece(sf::RenderWindow& window, const GameState& state);
     void drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiece);
+    void drawUI(sf::RenderWindow& window, const GameState& state);
+    void drawGameOverScreen(sf::RenderWindow& window, int finalScore);
 };

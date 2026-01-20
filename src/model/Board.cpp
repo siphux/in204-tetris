@@ -1,4 +1,6 @@
 #include "Board.h"
+#include "Tetromino.h"  // For Point definition
+#include <vector>
 
 Board::Board() {
     clear();
@@ -28,4 +30,29 @@ void Board::setCell(int x, int y, int value) {
     if (isInside(x, y)) {
         m_grid[y][x] = value;
     }
+}
+
+bool Board::checkCollision(const std::vector<Point>& blocks, int posX, int posY) const {
+    for (const auto& block : blocks) {
+        int x = posX + block.x;
+        int y = posY + block.y;
+        
+        // Check horizontal bounds
+        if (x < 0 || x >= Width) {
+            return true;
+        }
+
+        // Check vertical bounds (bottom)
+        if (y >= Height) {
+            return true;
+        }
+        
+        // Check if cell is occupied (only if inside vertical bounds)
+        // We allow y < 0 (above board)
+        if (y >= 0 && m_grid[y][x] != 0) {
+            return true; // Collision
+        }
+    }
+    
+    return false; // No collision
 }

@@ -4,7 +4,8 @@ InputHandler::InputHandler()
     : m_leftPressed(false),
       m_rightPressed(false),
       m_downPressed(false),
-      m_rotatePressed(false) {}
+      m_rotateClockwisePressed(false),
+      m_rotateCounterClockwisePressed(false) {}
 
 void InputHandler::handleKeyPress(sf::Keyboard::Key key) {
     switch (key) {
@@ -19,7 +20,10 @@ void InputHandler::handleKeyPress(sf::Keyboard::Key key) {
             break;
         case sf::Keyboard::Key::Up:
         case sf::Keyboard::Key::Space:
-            m_rotatePressed = true;
+            m_rotateClockwisePressed = true;
+            break;
+        case sf::Keyboard::Key::Z:
+            m_rotateCounterClockwisePressed = true;
             break;
         default:
             break;
@@ -39,7 +43,10 @@ void InputHandler::handleKeyRelease(sf::Keyboard::Key key) {
             break;
         case sf::Keyboard::Key::Up:
         case sf::Keyboard::Key::Space:
-            m_rotatePressed = false;
+            m_rotateClockwisePressed = false;
+            break;
+        case sf::Keyboard::Key::Z:
+            m_rotateCounterClockwisePressed = false;
             break;
         default:
             break;
@@ -62,10 +69,15 @@ bool InputHandler::isDownPressed() const {
     return m_downPressed;
 }
 
-bool InputHandler::isRotatePressed() const {
-    return m_rotatePressed;
+bool InputHandler::isRotateClockwisePressed() const {
+    return m_rotateClockwisePressed;
 }
 
-void InputHandler::resetRotateFlag() {
-    m_rotatePressed = false;
+bool InputHandler::isRotateCounterClockwisePressed() const {
+    return m_rotateCounterClockwisePressed;
+}
+
+void InputHandler::resetRotateFlags() {
+    m_rotateClockwisePressed = false;
+    m_rotateCounterClockwisePressed = false;
 }

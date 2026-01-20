@@ -1,4 +1,8 @@
 #pragma once
+#include <vector>
+
+// Forward declaration (Point is defined in Tetromino.h)
+struct Point;
 
 // Represents the Tetris grid.
 // The board only stores fixed blocks (no moving piece).
@@ -23,6 +27,10 @@ public:
 
     // Modify a cell value
     void setCell(int x, int y, int value);
+    
+    // Check if a tetromino piece would collide at given position
+    // Takes piece blocks (relative positions) and absolute position
+    bool checkCollision(const std::vector<Point>& blocks, int posX, int posY) const;
 
 private:
     // Grid storing color IDs (0 = empty)
