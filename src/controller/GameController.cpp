@@ -1,6 +1,7 @@
 #include "GameController.h"
 #include "../model/LevelBasedMode.h"
 #include "../model/DeathrunMode.h"
+#include "../model/AIMode.h"
 
 GameController::GameController()
     : m_inputTimer(0.0f),
@@ -67,6 +68,10 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_gameState.setGameMode(std::make_unique<DeathrunMode>());
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 2) {
+                // AI Mode
+                m_gameState.setGameMode(std::make_unique<AIMode>());
+                m_currentMenuState = MenuState::NONE;
+            } else if (m_selectedOption == 3) {
                 // Back
                 m_currentMenuState = MenuState::MAIN_MENU;
                 m_selectedOption = 0;

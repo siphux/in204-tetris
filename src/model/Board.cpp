@@ -5,7 +5,7 @@
 Board::Board() {
     clear();
 }
-
+//When x, y is passed, x corresponds to the row and y the column therefore, m_grid[y][x]!!!!
 void Board::clear() {
     for (int y = 0; y < Height; y++) {
         for (int x = 0; x < Width; x++) {
@@ -25,6 +25,7 @@ bool Board::isEmpty(int x, int y) const {
 int Board::getCell(int x, int y) const {
     return m_grid[y][x];
 }
+
 
 void Board::setCell(int x, int y, int value) {
     if (isInside(x, y)) {

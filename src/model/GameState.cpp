@@ -42,9 +42,13 @@ void GameState::update(float deltaTime) {
         m_gameMode->update(deltaTime, *this);
     }
 
-    if (m_isClearingLines) {
+    if (m_isClearingLines && !m_gameOver) {
         updateClearingAnimation(deltaTime);
         return; // Ne pas faire tomber la pièce pendant l'animation
+    }
+    
+    if (m_gameOver) {
+        return; // Ne rien faire si le jeu est terminé
     }
     
     m_fallTimer += deltaTime;
@@ -243,8 +247,10 @@ void GameState::updateClearingAnimation(float deltaTime) {
         m_clearAnimationTimer = 0.0f;
         m_linesToClear.clear();
         
-        // Spawner nouvelle pièce
-        spawnNewPiece();
+        // Spawner nouvelle pièce seulement si le jeu n'est pas terminé
+        if (!m_gameOver) {
+            spawnNewPiece();
+        }
     }
 }
 

@@ -259,6 +259,16 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state) {
             window.draw(levelText);
         }
     }
+    
+    // Show lines cleared for all modes
+    uiY += lineHeight;
+    if (state.getGameMode()) {
+        sf::Text linesText(m_font, "Lines: " + std::to_string(state.getGameMode()->getLinesCleared()));
+        linesText.setCharacterSize(20);
+        linesText.setFillColor(sf::Color::Yellow);
+        linesText.setPosition({uiX, uiY});
+        window.draw(linesText);
+    }
 }
 
 void GameView::drawGameOverScreen(sf::RenderWindow& window, int finalScore) {

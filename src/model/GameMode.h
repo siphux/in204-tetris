@@ -23,4 +23,7 @@ public:
 
     // Get display name for UI
     virtual const char* getModeName() const = 0;
+    
+    // Get total lines cleared in this mode
+    virtual int getLinesCleared() const = 0;
 };

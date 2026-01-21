@@ -40,7 +40,8 @@ void MenuView::renderModeSelection(sf::RenderWindow& window, int selectedOption)
     // Draw mode options
     drawMenuOption(window, "Level Mode", 250.0f, selectedOption == 0);
     drawMenuOption(window, "Deathrun Mode", 250.0f + OPTION_SPACING, selectedOption == 1);
-    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+    drawMenuOption(window, "AI Mode", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+    drawMenuOption(window, "Back", 250.0f + 3 * OPTION_SPACING, selectedOption == 3);
 }
 
 void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) const {
@@ -95,7 +96,7 @@ int MenuView::getOptionCount(MenuState menuState) const {
         case MenuState::MAIN_MENU:
             return 2; // Start, Exit
         case MenuState::MODE_SELECTION:
-            return 3; // Level Mode, Deathrun Mode, Back
+            return 4; // Level Mode, Deathrun Mode, AI Mode, Back
         case MenuState::PAUSE_MENU:
             return 2; // Resume, Main Menu
         case MenuState::GAME_OVER:

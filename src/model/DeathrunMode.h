@@ -15,9 +15,11 @@ public:
 
     // Accessors
     float getElapsedTime() const;
+    int getLinesCleared() const override;
 
 private:
     float m_elapsedTime;
+    int m_linesCleared;
     
     static constexpr float INITIAL_SPEED = 0.5f;
     static constexpr float ACCELERATION = 0.05f; // increase per second
