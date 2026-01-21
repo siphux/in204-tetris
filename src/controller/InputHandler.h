@@ -22,9 +22,13 @@ public:
     bool isDownPressed() const;
     bool isRotateClockwisePressed() const;
     bool isRotateCounterClockwisePressed() const;
+    bool isHardDropPressed() const;
     
     // Reset rotation flags (called after processing rotation)
     void resetRotateFlags();
+    
+    // Reset hard drop flag
+    void resetHardDropFlag();
 
 private:
     bool m_leftPressed;
@@ -32,4 +36,5 @@ private:
     bool m_downPressed;
     bool m_rotateClockwisePressed;
     bool m_rotateCounterClockwisePressed;
+    bool m_hardDropPressed;
 };

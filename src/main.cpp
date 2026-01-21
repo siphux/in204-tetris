@@ -9,7 +9,7 @@ int main() {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     // Create window first
-    sf::RenderWindow window(sf::VideoMode({800, 700}), "Tetris - IN204-TETRIS");
+    sf::RenderWindow window(sf::VideoMode({800, 700}), "Tetros");
     
     // Get all available video modes to find primary monitor
     auto desktopMode = sf::VideoMode::getDesktopMode();
@@ -59,7 +59,14 @@ int main() {
         }
 
         controller.update(deltaTime);
-        view.render(window, controller.getGameState());
+        
+        // Check if controller wants to exit
+        if (controller.shouldExit()) {
+            window.close();
+        }
+        
+        view.render(window, controller.getGameState(), controller.getMenuView(),
+                   controller.getMenuState(), controller.getSelectedOption());
     }
 
     return 0;

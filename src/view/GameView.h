@@ -1,14 +1,20 @@
 #pragma once
 #include <SFML/Graphics.hpp>
 #include "../model/GameState.h"
+#include "../model/GameMode.h"
+#include "MenuView.h"
 
 // Handles rendering the game state to the window.
 class GameView {
 public:
     GameView();
 
-    // Render the entire game scene
-    void render(sf::RenderWindow& window, const GameState& state);
+    // Render the entire game scene (game or menu)
+    void render(sf::RenderWindow& window, const GameState& state, 
+               const MenuView& menuView, MenuState menuState, int selectedOption);
+
+    // Render just the game (without menu overlay)
+    void renderGame(sf::RenderWindow& window, const GameState& state);
 
 private:
     static constexpr int CellSize = 30;

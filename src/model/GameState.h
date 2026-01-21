@@ -2,17 +2,23 @@
 #include "Board.h"
 #include "Tetromino.h"
 #include "Score.h"
-#include "Level.h"
+#include "GameMode.h"
 #include <vector>
+#include <memory>
+
+// Forward declaration
+class GameMode;
 
 // GameState is responsible for:
 // - current piece
 // - board state
-// - score and level
+// - score
 // - piece movement & gravity
+// - game mode management
 class GameState {
 public:
     GameState();
+    ~GameState();
 
     // Update the game logic (falling)
     void update(float deltaTime);
@@ -28,6 +34,9 @@ public:
     // Drop piece by one row (gravity or soft drop)
     void softDrop();
 
+    // Drop piece instantly to the bottom
+    void hardDrop();
+
     // Lock current piece into board and spawn a new piece
     void lockPiece();
 
@@ -35,6 +44,10 @@ public:
     void updateClearingAnimation(float deltaTime);
 
     void reset(); // Réinitialiser le jeu
+
+    // Game mode management
+    void setGameMode(std::unique_ptr<GameMode> mode);
+    GameMode* getGameMode() const;
 
     // Accessors for rendering
     const Board& board() const;
@@ -56,7 +69,7 @@ private:
     Tetromino m_currentPiece;
     Tetromino m_nextPiece;
     Score m_score;
-    Level m_level;
+    std::unique_ptr<GameMode> m_gameMode;
     bool m_isClearingLines;
     float m_clearAnimationTimer;
     std::vector<int> m_linesToClear;
@@ -66,7 +79,6 @@ private:
 
     int m_x; // current piece position X
     int m_y; // current piece position Y
-
 
     float m_fallTimer;
 

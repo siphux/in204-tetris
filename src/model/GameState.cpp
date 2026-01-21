@@ -1,4 +1,6 @@
 #include "GameState.h"
+#include "GameMode.h"
+#include "LevelBasedMode.h"
 #include <cstdlib> // for rand()
 #include <algorithm> // for std::sort, std::greater
 
@@ -24,21 +26,30 @@ GameState::GameState()
       m_fallTimer(0.f),
       m_isClearingLines(false),
       m_clearAnimationTimer(0.0f),
-      m_gameOver(false)
+      m_gameOver(false),
+      m_gameMode(std::make_unique<LevelBasedMode>())
 {
     refillBag();
     spawnNewPiece();
 }
 
+GameState::~GameState() = default;
+
 // Update game logic
 void GameState::update(float deltaTime) {
+    // Update mode-specific logic
+    if (m_gameMode) {
+        m_gameMode->update(deltaTime, *this);
+    }
+
     if (m_isClearingLines) {
         updateClearingAnimation(deltaTime);
         return; // Ne pas faire tomber la pièce pendant l'animation
     }
     
     m_fallTimer += deltaTime;
-    if (m_fallTimer > m_level.fallSpeed()) {
+    float fallSpeed = m_gameMode ? m_gameMode->getFallSpeed() : 0.5f;
+    if (m_fallTimer > fallSpeed) {
         softDrop(); // piece moves down automatically
         m_fallTimer = 0.f;
     }
@@ -132,6 +143,16 @@ void GameState::softDrop() {
     }
 }
 
+// Drop piece instantly to the bottom
+void GameState::hardDrop() {
+    // Move down until we hit something
+    while (!m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y + 1)) {
+        m_y++;
+    }
+    // Lock the piece immediately
+    lockPiece();
+}
+
 // Lock piece into the board
 void GameState::lockPiece() {
     // Place piece blocks into board
@@ -210,10 +231,12 @@ void GameState::updateClearingAnimation(float deltaTime) {
             writeY--;
         }
         
-        // Mettre à jour score et level
+        // Mettre à jour score et mode
         int linesCleared = static_cast<int>(m_linesToClear.size());
-        m_score.addLineClear(linesCleared, m_level.current());
-        m_level.addLines(linesCleared);
+        m_score.addLineClear(linesCleared, 0); // Level is now managed by mode
+        if (m_gameMode) {
+            m_gameMode->onLinesClear(linesCleared, *this);
+        }
         
         // Réinitialiser l'état
         m_isClearingLines = false;
@@ -228,11 +251,15 @@ void GameState::updateClearingAnimation(float deltaTime) {
 void GameState::reset() {
     m_board.clear();
     m_score.reset();
-    m_level = Level(); // Réinitialiser le level
     m_gameOver = false;
     m_isClearingLines = false;
     m_clearAnimationTimer = 0.0f;
     m_linesToClear.clear();
+    
+    // Reset game mode
+    if (m_gameMode) {
+        m_gameMode->reset();
+    }
 
     // Réinitialiser le sac de pièces
     refillBag();
@@ -258,7 +285,11 @@ int GameState::getGhostY() const {
     return ghostY;
 }
 int GameState::score() const { return m_score.value(); }
-int GameState::level() const { return m_level.current(); }
+int GameState::level() const {
+    // If mode is LevelBasedMode, get level from it
+    // Otherwise return 0
+    return 0; // Mode manages level internally now
+}
 
 bool GameState::isGameOver() const {
     return m_gameOver;
@@ -271,6 +302,15 @@ bool GameState::isClearingLines() const {
 float GameState::getClearAnimationProgress() const {
     if (!m_isClearingLines) return 0.0f;
     return m_clearAnimationTimer / CLEAR_ANIMATION_DURATION;
+}
+
+void GameState::setGameMode(std::unique_ptr<GameMode> mode) {
+    m_gameMode = std::move(mode);
+    reset();
+}
+
+GameMode* GameState::getGameMode() const {
+    return m_gameMode.get();
 }
 
 // Spawn a new random piece at the top

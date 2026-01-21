@@ -1,4 +1,6 @@
 #include "GameView.h"
+#include "../model/LevelBasedMode.h"
+#include "../model/DeathrunMode.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -19,10 +21,38 @@ GameView::GameView() : m_fontLoaded(false) {
     }
 }
 
-void GameView::render(sf::RenderWindow& window, const GameState& state) {
+void GameView::render(sf::RenderWindow& window, const GameState& state,
+                      const MenuView& menuView, MenuState menuState, int selectedOption) {
     window.clear(sf::Color::Black);
 
-    if (state.isGameOver()) {
+    // Always render the game in the background
+    renderGame(window, state);
+
+    // Then render menu on top if active
+    if (menuState != MenuState::NONE) {
+        switch (menuState) {
+            case MenuState::MAIN_MENU:
+                menuView.renderMainMenu(window, selectedOption);
+                break;
+            case MenuState::MODE_SELECTION:
+                menuView.renderModeSelection(window, selectedOption);
+                break;
+            case MenuState::PAUSE_MENU:
+                menuView.renderPauseMenu(window, selectedOption);
+                break;
+            case MenuState::GAME_OVER:
+                menuView.renderGameOver(window, state.score(), selectedOption);
+                break;
+            default:
+                break;
+        }
+    }
+
+    window.display();
+}
+
+void GameView::renderGame(sf::RenderWindow& window, const GameState& state) {
+    if (state.isGameOver() && false) { // Don't draw game over here, let controller handle menu
         drawGameOverScreen(window, state.score());
     } else {
         // Dessiner le board avec animation si nécessaire
@@ -37,8 +67,6 @@ void GameView::render(sf::RenderWindow& window, const GameState& state) {
 
         drawUI(window, state);
     }
-
-    window.display();
 }
 
 sf::Color GameView::colorForId(int colorId) const {
@@ -199,13 +227,38 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state) {
     scoreText.setPosition({uiX, uiY});
     window.draw(scoreText);
 
-    // Level
+    // Mode name and mode-specific info
     uiY += lineHeight;
-    sf::Text levelText(m_font, "Level: " + std::to_string(state.level()));
-    levelText.setCharacterSize(24);
-    levelText.setFillColor(sf::Color::White);
-    levelText.setPosition({uiX, uiY});
-    window.draw(levelText);
+    const char* modeName = state.getGameMode() ? state.getGameMode()->getModeName() : "Unknown";
+    sf::Text modeText(m_font, std::string("Mode: ") + modeName);
+    modeText.setCharacterSize(20);
+    modeText.setFillColor(sf::Color::Cyan);
+    modeText.setPosition({uiX, uiY});
+    window.draw(modeText);
+
+    // Show deathrun elapsed time or level-based level
+    uiY += lineHeight;
+    if (state.getGameMode() && std::string(state.getGameMode()->getModeName()) == "Deathrun Mode") {
+        // Show elapsed time for deathrun
+        const auto* deathrun = dynamic_cast<const DeathrunMode*>(state.getGameMode());
+        if (deathrun) {
+            sf::Text timeText(m_font, "Time: " + std::to_string(static_cast<int>(deathrun->getElapsedTime())) + "s");
+            timeText.setCharacterSize(20);
+            timeText.setFillColor(sf::Color::Red);
+            timeText.setPosition({uiX, uiY});
+            window.draw(timeText);
+        }
+    } else {
+        // Show level for level-based mode
+        const auto* levelMode = dynamic_cast<const LevelBasedMode*>(state.getGameMode());
+        if (levelMode) {
+            sf::Text levelText(m_font, "Level: " + std::to_string(levelMode->getCurrentLevel()));
+            levelText.setCharacterSize(20);
+            levelText.setFillColor(sf::Color::Green);
+            levelText.setPosition({uiX, uiY});
+            window.draw(levelText);
+        }
+    }
 }
 
 void GameView::drawGameOverScreen(sf::RenderWindow& window, int finalScore) {
