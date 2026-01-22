@@ -7,6 +7,7 @@
 enum class MenuState {
     MAIN_MENU,
     MODE_SELECTION,
+    AI_SELECTION,
     PAUSE_MENU,
     GAME_OVER,
     NONE  // No menu active
@@ -22,6 +23,9 @@ public:
 
     // Render mode selection menu
     void renderModeSelection(sf::RenderWindow& window, int selectedOption) const;
+
+    // Render AI selection menu
+    void renderAISelection(sf::RenderWindow& window, int selectedOption) const;
 
     // Render pause menu
     void renderPauseMenu(sf::RenderWindow& window, int selectedOption) const;

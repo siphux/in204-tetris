@@ -1,7 +1,7 @@
 #include "LevelBasedMode.h"
 #include "GameState.h"
 
-LevelBasedMode::LevelBasedMode() : m_level() {}
+LevelBasedMode::LevelBasedMode() : m_level(), m_totalLinesCleared(0) {}
 
 void LevelBasedMode::update(float deltaTime, GameState& gameState) {
     // Level-based mode doesn't need per-frame updates
@@ -18,10 +18,13 @@ float LevelBasedMode::getFallSpeed() const {
 void LevelBasedMode::onLinesClear(int linesCleared, GameState& gameState) {
     // Add cleared lines to level tracker
     m_level.addLines(linesCleared);
+    // Track total lines cleared
+    m_totalLinesCleared += linesCleared;
 }
 
 void LevelBasedMode::reset() {
     m_level = Level();
+    m_totalLinesCleared = 0;
 }
 
 const char* LevelBasedMode::getModeName() const {
@@ -33,6 +36,5 @@ int LevelBasedMode::getCurrentLevel() const {
 }
 
 int LevelBasedMode::getLinesCleared() const {
-    // This would require extending Level class, but we can calculate from level
-    return m_level.current() * 10; // Approximation
+    return m_totalLinesCleared;
 }

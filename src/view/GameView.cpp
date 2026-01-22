@@ -37,6 +37,9 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
             case MenuState::MODE_SELECTION:
                 menuView.renderModeSelection(window, selectedOption);
                 break;
+            case MenuState::AI_SELECTION:
+                menuView.renderAISelection(window, selectedOption);
+                break;
             case MenuState::PAUSE_MENU:
                 menuView.renderPauseMenu(window, selectedOption);
                 break;

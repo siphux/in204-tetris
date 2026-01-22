@@ -1,8 +1,12 @@
 #include "AIMode.h"
 #include "GameState.h"
+#include "../ai/SimpleAI.h"
+#include "../ai/AdvancedAI.h"
 
-AIMode::AIMode() 
-    : m_ai(std::make_unique<SimpleAI>()),
+AIMode::AIMode(bool useAdvanced) 
+    : m_useAdvanced(useAdvanced),
+      m_ai(useAdvanced ? static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<AdvancedAI>()) 
+                        : static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<SimpleAI>())),
       m_moveTimer(0.0f),
       m_linesCleared(0) {}
 
@@ -56,7 +60,9 @@ void AIMode::onLinesClear(int linesCleared, GameState& gameState) {
 void AIMode::reset() {
     m_moveTimer = 0.0f;
     m_linesCleared = 0;
-    m_ai = std::make_unique<SimpleAI>();
+    // Preserve the AI type choice when resetting
+    m_ai = m_useAdvanced ? static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<AdvancedAI>()) 
+                         : static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<SimpleAI>());
 }
 
 const char* AIMode::getModeName() const {

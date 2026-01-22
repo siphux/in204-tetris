@@ -68,13 +68,27 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_gameState.setGameMode(std::make_unique<DeathrunMode>());
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 2) {
-                // AI Mode
-                m_gameState.setGameMode(std::make_unique<AIMode>());
-                m_currentMenuState = MenuState::NONE;
+                // AI Mode - go to AI selection submenu
+                m_currentMenuState = MenuState::AI_SELECTION;
+                m_selectedOption = 0;
             } else if (m_selectedOption == 3) {
                 // Back
                 m_currentMenuState = MenuState::MAIN_MENU;
                 m_selectedOption = 0;
+            }
+        } else if (m_currentMenuState == MenuState::AI_SELECTION) {
+            if (m_selectedOption == 0) {
+                // Simple AI
+                m_gameState.setGameMode(std::make_unique<AIMode>(false));
+                m_currentMenuState = MenuState::NONE;
+            } else if (m_selectedOption == 1) {
+                // Advanced AI
+                m_gameState.setGameMode(std::make_unique<AIMode>(true));
+                m_currentMenuState = MenuState::NONE;
+            } else if (m_selectedOption == 2) {
+                // Back
+                m_currentMenuState = MenuState::MODE_SELECTION;
+                m_selectedOption = 2; // Return to AI Mode option
             }
         } else if (m_currentMenuState == MenuState::PAUSE_MENU) {
             if (m_selectedOption == 0) {

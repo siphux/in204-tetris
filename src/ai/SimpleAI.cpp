@@ -3,14 +3,13 @@
 #include <cmath>
 
 std::pair<int, int> SimpleAI::chooseMove(const GameState& state){
-    double bestScore = -std::numeric_limits<double>::infinity();
+    double bestScore = -std::numeric_limits<double>::infinity(); // Maximize
     int bestRotation = 0;
     int bestColumn = 0;
     const Board& board = state.board();
     const Tetromino& piece = state.currentPiece();
 
     for (int rotation = 0; rotation < 4; rotation++){
-        // Créer une copie de la pièce avec la rotation
         Tetromino rotatedPiece = piece;
         for (int r = 0; r < rotation; ++r){
             rotatedPiece.rotateClockwise();
@@ -18,16 +17,13 @@ std::pair<int, int> SimpleAI::chooseMove(const GameState& state){
         
         const auto& blocks = rotatedPiece.getBlocks();
         
-        // Calculer les limites valides pour cette rotation
         int minX = 0, maxX = 0;
         for (const auto& block : blocks) {
             minX = std::min(minX, block.x);
             maxX = std::max(maxX, block.x);
         }
         
-        // Parcourir uniquement les colonnes valides
         for (int column = -minX; column < Board::Width - maxX; column++){
-            // Vérifier que tous les blocs seront dans les limites
             bool validPlacement = true;
             for (const auto& block : blocks) {
                 int x = column + block.x;
@@ -53,12 +49,20 @@ std::pair<int, int> SimpleAI::chooseMove(const GameState& state){
 }
 
 double SimpleAI::boardEvaluation(const Board& board) const{
-    double bumpiness = (double) calculateBumpiness(board);
-    double holes = (double) calculateHoles(board);
-    double linesCleared = (double) calculateCompleteLines(board);
-    double max_height = (double) maxHeight(board);
-    return -2 * bumpiness - 4 * holes + 5 * linesCleared - 2 * max_height;
+    double nbHole = (double) calculateHoles(board);
+    double maxH = (double) countMaxHeight(board);
+    double minH = (double) countMinHeight(board);
+    double line = isLine(board);
+    double holeColumn = (double) countHoleColumn(board, 2);
+    double bump = (double) calculateBumpiness(board);
+    
+    
+    double heightPenalty = maxH * maxH * 0.5;
+    double heightDiff = maxH - minH;
+    
+    return line - (nbHole * 10.0) - (heightDiff * 2.0) - (holeColumn * 5.0) - (bump * 1.0) - heightPenalty;
 }
+
 
 
 int SimpleAI::maxHeight(const Board& board) const{
@@ -127,4 +131,81 @@ int SimpleAI::calculateHoles(const Board& board) const{
         }
     }
     return holes;
+}
+
+int SimpleAI::countMinHeight(const Board& board) const {
+    int minHeight = Board::Height;
+    for (int x = 0; x < Board::Width; x++) {
+        for (int y = 0; y < Board::Height; y++) {
+            if (!board.isEmpty(x, y)) {
+                int height = Board::Height - y;
+                if (height < minHeight) {
+                    minHeight = height;
+                }
+                break;
+            }
+        }
+    }
+    return minHeight == Board::Height ? 0 : minHeight;
+}
+
+int SimpleAI::countMaxHeight(const Board& board) const {
+    int maxHeight = 0;
+    for (int x = 0; x < Board::Width; x++) {
+        for (int y = 0; y < Board::Height; y++) {
+            if (!board.isEmpty(x, y)) {
+                int height = Board::Height - y;
+                if (height > maxHeight) {
+                    maxHeight = height;
+                }
+                break;
+            }
+        }
+    }
+    return maxHeight;
+}
+
+double SimpleAI::isLine(const Board& board) const {
+    int completedLines = 0;
+    for (int y = 0; y < Board::Height; y++) {
+        bool isFull = true;
+        for (int x = 0; x < Board::Width; x++) {
+            if (board.isEmpty(x, y)) {
+                isFull = false;
+                break;
+            }
+        }
+        if (isFull) {
+            completedLines++;
+        }
+    }
+    
+    if (completedLines == 0) {
+        return 0;
+    }
+    
+    double bonus = completedLines * completedLines * 100.0;
+    return bonus;
+}
+
+int SimpleAI::countHoleColumn(const Board& board, int minimumLine) const {
+    int countLongHole = 0;
+    for (int x = 0; x < Board::Width; x++) {
+        int row = 0;
+        for (int y = Board::Height - 1; y >= 0; y--) {
+            bool leftBlocked = (x - 1 < 0) || !board.isEmpty(x - 1, y);
+            bool rightBlocked = (x + 1 >= Board::Width) || !board.isEmpty(x + 1, y);
+            
+            if (leftBlocked && rightBlocked && board.isEmpty(x, y)) {
+                row++;
+            } else if (!board.isEmpty(x, y)) {
+                row = 0;
+            }
+        }
+        
+        if (row > minimumLine) {
+            countLongHole += row;
+        }
+    }
+    return countLongHole;
 }

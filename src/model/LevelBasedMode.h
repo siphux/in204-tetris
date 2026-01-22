@@ -20,6 +20,7 @@ public:
 
 private:
     Level m_level;
+    int m_totalLinesCleared;  // Track total lines cleared
     
     static constexpr float BASE_SPEED = 0.5f;
     static constexpr float SPEED_MULTIPLIER = 0.05f;

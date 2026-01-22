@@ -44,6 +44,22 @@ void MenuView::renderModeSelection(sf::RenderWindow& window, int selectedOption)
     drawMenuOption(window, "Back", 250.0f + 3 * OPTION_SPACING, selectedOption == 3);
 }
 
+void MenuView::renderAISelection(sf::RenderWindow& window, int selectedOption) const {
+    // Draw background
+    sf::RectangleShape background({static_cast<float>(window.getSize().x),
+                                  static_cast<float>(window.getSize().y)});
+    background.setFillColor(sf::Color::Black);
+    window.draw(background);
+
+    // Draw title
+    drawCenteredText(window, "Select AI Type", 100.0f, TITLE_SIZE, sf::Color::White);
+
+    // Draw AI options
+    drawMenuOption(window, "Simple AI", 250.0f, selectedOption == 0);
+    drawMenuOption(window, "Advanced AI (with lookahead)", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+}
+
 void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) const {
     // Draw semi-transparent overlay
     sf::RectangleShape overlay({static_cast<float>(window.getSize().x),
@@ -97,6 +113,8 @@ int MenuView::getOptionCount(MenuState menuState) const {
             return 2; // Start, Exit
         case MenuState::MODE_SELECTION:
             return 4; // Level Mode, Deathrun Mode, AI Mode, Back
+        case MenuState::AI_SELECTION:
+            return 3; // Simple AI, Advanced AI, Back
         case MenuState::PAUSE_MENU:
             return 2; // Resume, Main Menu
         case MenuState::GAME_OVER:

@@ -15,6 +15,10 @@ private:
     int calculateCompleteLines(const Board& board) const;
     int calculateHoles(const Board& board) const;
     int maxHeight(const Board& board) const;
+    int countMinHeight(const Board& board) const;
+    int countMaxHeight(const Board& board) const;
+    double isLine(const Board& board) const;
+    int countHoleColumn(const Board& board, int minimumLine = 2) const;
 };
 
 #endif

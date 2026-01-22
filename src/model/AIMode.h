@@ -1,13 +1,13 @@
 #pragma once
 #include "GameMode.h"
-#include "../ai/SimpleAI.h"
+#include "../ai/AIPlayer.h"
 #include <memory>
 
 // AI Mode: An AI player automatically plays the game
 // The AI uses heuristics to make optimal piece placements
 class AIMode : public GameMode {
 public:
-    AIMode();
+    AIMode(bool useAdvanced = true);
 
     void update(float deltaTime, GameState& gameState) override;
     float getFallSpeed() const override;
@@ -19,7 +19,8 @@ public:
     int getLinesCleared() const override;
 
 private:
-    std::unique_ptr<SimpleAI> m_ai;
+    std::unique_ptr<AIPlayer> m_ai;
+    bool m_useAdvanced;  // Store the AI type choice
     float m_moveTimer;
     int m_linesCleared;
     
