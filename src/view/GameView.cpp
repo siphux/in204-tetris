@@ -53,7 +53,7 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
                 menuView.renderJoinGame(window, selectedOption);
                 break;
             case MenuState::ENTER_IP:
-                menuView.renderEnterIP(window, ipInput);
+                menuView.renderEnterIP(window, ipInput, selectedOption);
                 break;
             case MenuState::PAUSE_MENU:
                 menuView.renderPauseMenu(window, selectedOption, isNetworkMode);

@@ -143,25 +143,27 @@ void MenuView::renderJoinGame(sf::RenderWindow& window, int selectedOption) cons
     drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
 }
 
-void MenuView::renderEnterIP(sf::RenderWindow& window, const std::string& currentIP) const {
-    // Draw background
+void MenuView::renderEnterIP(sf::RenderWindow& window, const std::string& currentIP, int selectedOption) const {
     sf::RectangleShape background({static_cast<float>(window.getSize().x),
                                   static_cast<float>(window.getSize().y)});
     background.setFillColor(sf::Color::Black);
     window.draw(background);
 
-    // Draw title
-    drawCenteredText(window, "Enter Server IP", 100.0f, TITLE_SIZE, sf::Color::White);
+    drawCenteredText(window, "Enter Server Address", 100.0f, TITLE_SIZE, sf::Color::White);
 
-    // Draw current IP input
-    std::string ipDisplay = "IP: " + (currentIP.empty() ? "..." : currentIP);
-    drawCenteredText(window, ipDisplay, 250.0f, OPTION_SIZE, sf::Color::Yellow);
+    std::string ipDisplay = "Address: " + (currentIP.empty() ? "..." : currentIP);
+    drawCenteredText(window, ipDisplay, 250.0f, OPTION_SIZE, 
+                     selectedOption == 0 ? sf::Color::Yellow : sf::Color::White);
     
-    // Instructions
-    drawCenteredText(window, "Type IP address (e.g., 192.168.1.100)", 
+    drawCenteredText(window, "Format: IP:PORT (e.g., 192.168.1.100:53000)", 
                     300.0f, OPTION_SIZE * 0.7f, sf::Color::White);
-    drawCenteredText(window, "Backspace to delete | Enter to connect | ESC to cancel", 
-                    350.0f, OPTION_SIZE * 0.7f, sf::Color::Cyan);
+    drawCenteredText(window, "Port is optional (default: 53000)", 
+                    330.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
+    
+    drawMenuOption(window, "Back", 400.0f, selectedOption == 1);
+    
+    drawCenteredText(window, "Backspace to delete | Enter to connect", 
+                    460.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
 }
 
 void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption, bool isMultiplayer) const {
@@ -235,7 +237,7 @@ int MenuView::getOptionCount(MenuState menuState, bool isMultiplayer) const {
         case MenuState::JOIN_GAME:
             return 3; // Connect to localhost, Enter IP address, Back
         case MenuState::ENTER_IP:
-            return 0; // No options, just text input
+            return 2; // Input field (option 0) and Back (option 1)
         case MenuState::PAUSE_MENU:
             return isMultiplayer ? 3 : 2; // Resume, Disconnect/Main Menu, Main Menu (if multiplayer)
         case MenuState::GAME_OVER:

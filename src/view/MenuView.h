@@ -42,7 +42,7 @@ public:
     void renderJoinGame(sf::RenderWindow& window, int selectedOption) const;
 
     // Render IP input menu
-    void renderEnterIP(sf::RenderWindow& window, const std::string& currentIP) const;
+    void renderEnterIP(sf::RenderWindow& window, const std::string& currentIP, int selectedOption = 0) const;
 
     // Render pause menu
     void renderPauseMenu(sf::RenderWindow& window, int selectedOption, bool isMultiplayer = false) const;

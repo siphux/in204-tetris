@@ -31,9 +31,27 @@ void GameController::handleEvent(const sf::Event& event) {
                 removeLastIPChar();
                 return;
             } else if (keyPressed->code == sf::Keyboard::Key::Enter) {
-                // Connect to entered IP
-                if (!m_serverIPInput.empty()) {
-                    connectToServer(m_serverIPInput, 53000);
+                if (m_selectedOption == 1) {
+                    m_currentMenuState = MenuState::JOIN_GAME;
+                    m_selectedOption = 1;
+                } else if (!m_serverIPInput.empty()) {
+                    std::string ip = m_serverIPInput;
+                    unsigned short port = 53000;
+                    
+                    size_t colonPos = ip.find(':');
+                    if (colonPos != std::string::npos) {
+                        std::string portStr = ip.substr(colonPos + 1);
+                        ip = ip.substr(0, colonPos);
+                        try {
+                            int portInt = std::stoi(portStr);
+                            if (portInt > 0 && portInt <= 65535) {
+                                port = static_cast<unsigned short>(portInt);
+                            }
+                        } catch (...) {
+                        }
+                    }
+                    
+                    connectToServer(ip, port);
                 }
                 return;
             } else if (keyPressed->code == sf::Keyboard::Key::Escape) {
@@ -49,12 +67,11 @@ void GameController::handleEvent(const sf::Event& event) {
         
         // Handle text input (for typing characters)
         if (const auto* textEntered = event.getIf<sf::Event::TextEntered>()) {
-            // Only allow printable ASCII characters and dots/numbers for IP
             char c = static_cast<char>(textEntered->unicode);
-            // Filter out control characters (including backspace which is 8)
-            if (c >= 32 && c <= 126) {  // Printable ASCII range
-                if ((c >= '0' && c <= '9') || c == '.') {
+            if (c >= 32 && c <= 126) {
+                if ((c >= '0' && c <= '9') || c == '.' || c == ':') {
                     appendToIPInput(c);
+                    m_selectedOption = 0;
                 }
             }
         }
@@ -115,7 +132,13 @@ void GameController::handleEvent(const sf::Event& event) {
 void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
     int optionCount = m_menuView.getOptionCount(m_currentMenuState, isNetworkMode());
     
-    // Handle menu navigation
+    if (m_currentMenuState == MenuState::ENTER_IP) {
+        if (key == sf::Keyboard::Key::Up || key == sf::Keyboard::Key::Down) {
+            m_selectedOption = (m_selectedOption + (key == sf::Keyboard::Key::Down ? 1 : -1) + optionCount) % optionCount;
+        }
+        return;
+    }
+    
     if (key == sf::Keyboard::Key::Up) {
         m_selectedOption = (m_selectedOption - 1 + optionCount) % optionCount;
     } else if (key == sf::Keyboard::Key::Down) {
@@ -183,34 +206,46 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_selectedOption = 1; // Return to Multiplayer option
             }
         } else if (m_currentMenuState == MenuState::JOIN_GAME) {
-            if (m_selectedOption == 0) {
-                // Connect to localhost
+            if (key == sf::Keyboard::Key::Escape) {
+                m_currentMenuState = MenuState::MULTIPLAYER_MENU;
+                m_selectedOption = 1;
+            } else if (m_selectedOption == 0) {
                 connectToServer("localhost", 53000);
-                // If connection succeeds, game will start automatically
-                // If it fails, we stay in the menu
             } else if (m_selectedOption == 1) {
-                // Enter IP address - go to IP input screen
                 m_serverIPInput.clear();
                 m_currentMenuState = MenuState::ENTER_IP;
+                m_selectedOption = 0;
             } else if (m_selectedOption == 2) {
-                // Back
                 m_currentMenuState = MenuState::MULTIPLAYER_MENU;
-                m_selectedOption = 1; // Return to Join Game option
+                m_selectedOption = 1;
             }
         } else if (m_currentMenuState == MenuState::ENTER_IP) {
-            // Handle text input for IP address
-            // This will be handled in handleEvent for TextEntered events
-            if (key == sf::Keyboard::Key::Enter) {
-                // Connect to entered IP
+            if (m_selectedOption == 1) {
+                m_currentMenuState = MenuState::JOIN_GAME;
+                m_selectedOption = 1;
+            } else if (key == sf::Keyboard::Key::Enter) {
                 if (!m_serverIPInput.empty()) {
-                    connectToServer(m_serverIPInput, 53000);
+                    std::string ip = m_serverIPInput;
+                    unsigned short port = 53000;
+                    
+                    size_t colonPos = ip.find(':');
+                    if (colonPos != std::string::npos) {
+                        std::string portStr = ip.substr(colonPos + 1);
+                        ip = ip.substr(0, colonPos);
+                        try {
+                            int portInt = std::stoi(portStr);
+                            if (portInt > 0 && portInt <= 65535) {
+                                port = static_cast<unsigned short>(portInt);
+                            }
+                        } catch (...) {
+                        }
+                    }
+                    
+                    connectToServer(ip, port);
                 }
             } else if (key == sf::Keyboard::Key::Escape) {
-                // Cancel and go back
                 m_currentMenuState = MenuState::JOIN_GAME;
-                m_selectedOption = 1; // Return to "Enter IP address" option
-            } else if (key == sf::Keyboard::Key::Backspace) {
-                removeLastIPChar();
+                m_selectedOption = 1;
             }
         } else if (m_currentMenuState == MenuState::HOST_GAME) {
             if (m_selectedOption == 0) {
@@ -446,8 +481,7 @@ const MenuView& GameController::getMenuView() const {
 }
 
 void GameController::appendToIPInput(char c) {
-    // Limit IP input length (max 15 chars for IPv4: "255.255.255.255")
-    if (m_serverIPInput.length() < 15) {
+    if (m_serverIPInput.length() < 25) {
         m_serverIPInput += c;
     }
 }
