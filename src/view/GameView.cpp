@@ -22,7 +22,10 @@ GameView::GameView() : m_fontLoaded(false) {
 }
 
 void GameView::render(sf::RenderWindow& window, const GameState& state,
-                      const MenuView& menuView, MenuState menuState, int selectedOption) {
+                      const MenuView& menuView, MenuState menuState, int selectedOption,
+                      bool isHosting, bool isClientConnected, const std::string& ipInput,
+                      const std::string& serverLocalIP, const std::string& serverPublicIP,
+                      bool isNetworkMode) {
     window.clear(sf::Color::Black);
 
     // Always render the game in the background
@@ -40,8 +43,20 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
             case MenuState::AI_SELECTION:
                 menuView.renderAISelection(window, selectedOption);
                 break;
+            case MenuState::MULTIPLAYER_MENU:
+                menuView.renderMultiplayerMenu(window, selectedOption);
+                break;
+            case MenuState::HOST_GAME:
+                menuView.renderHostGame(window, isClientConnected, serverLocalIP, serverPublicIP, selectedOption);
+                break;
+            case MenuState::JOIN_GAME:
+                menuView.renderJoinGame(window, selectedOption);
+                break;
+            case MenuState::ENTER_IP:
+                menuView.renderEnterIP(window, ipInput);
+                break;
             case MenuState::PAUSE_MENU:
-                menuView.renderPauseMenu(window, selectedOption);
+                menuView.renderPauseMenu(window, selectedOption, isNetworkMode);
                 break;
             case MenuState::GAME_OVER:
                 menuView.renderGameOver(window, state.score(), selectedOption);

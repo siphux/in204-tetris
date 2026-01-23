@@ -11,7 +11,10 @@ public:
 
     // Render the entire game scene (game or menu)
     void render(sf::RenderWindow& window, const GameState& state, 
-               const MenuView& menuView, MenuState menuState, int selectedOption);
+               const MenuView& menuView, MenuState menuState, int selectedOption,
+               bool isHosting = false, bool isClientConnected = false,
+               const std::string& ipInput = "", const std::string& serverLocalIP = "",
+               const std::string& serverPublicIP = "", bool isNetworkMode = false);
 
     // Render just the game (without menu overlay)
     void renderGame(sf::RenderWindow& window, const GameState& state);

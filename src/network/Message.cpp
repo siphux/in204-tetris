@@ -44,8 +44,8 @@ void Message::clearPayload() {
 
 void Message::serialize(sf::Packet& packet) const {
     packet << static_cast<uint8_t>(m_type);
-    packet << m_playerId;                   
-    packet << m_timestamp;               
+    packet << m_playerId;
+    packet << m_timestamp;
     packet.append(m_payload.getData(), m_payload.getDataSize());
 }
 
@@ -67,17 +67,35 @@ void Message::deserialize(sf::Packet& packet) {
 bool Message::send(sf::TcpSocket& socket) const {
     sf::Packet packet;
     serialize(packet);
-    return socket.send(packet) == sf::Socket::Done;
+    return socket.send(packet) == sf::Socket::Status::Done;
 }
 
 bool Message::receive(sf::TcpSocket& socket, Message& outMessage) {
     sf::Packet packet;
     sf::Socket::Status status = socket.receive(packet);
 
-    if (status != sf::Socket::Done) {
+    if (status != sf::Socket::Status::Done) {
         return false;
     }
 
     outMessage.deserialize(packet);
     return true;
+}
+
+std::vector<uint8_t> Message::serialize() const {
+    sf::Packet packet;
+    serialize(packet);
+    
+    std::vector<uint8_t> bytes;
+    const uint8_t* data = static_cast<const uint8_t*>(packet.getData());
+    bytes.insert(bytes.end(), data, data + packet.getDataSize());
+    return bytes;
+}
+
+Message Message::deserialize(const uint8_t* data, size_t size) {
+    sf::Packet packet;
+    packet.append(data, size);
+    Message msg;
+    msg.deserialize(packet);
+    return msg;
 }

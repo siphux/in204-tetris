@@ -63,6 +63,13 @@ public:
     // Animation state accessors
     bool isClearingLines() const;
     float getClearAnimationProgress() const; // Returns 0.0 to 1.0
+    
+    // Multiplayer: Add garbage lines at the bottom (for attacks)
+    void addGarbageLines(int numLines);
+    
+    // Network synchronization: Sync board state from serialized data
+    // This allows NetworkManager to update the board for multiplayer sync
+    void syncBoard(const Board& board);
 
 private:
     Board m_board;

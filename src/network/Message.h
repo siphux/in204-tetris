@@ -1,19 +1,20 @@
 #pragma once
 #include <SFML/Network.hpp>
 #include <cstdint>
+#include <vector>
 
 enum class MessageType {
-    JOIN,           // Client demande de rejoindre
-    JOIN_ACK,       // Serveur confirme la connexion (avec playerId)
-    START,          // Serveur démarre la partie
-    MOVE,           // Client envoie mouvement (LEFT/RIGHT)
-    ROTATE,         // Client envoie rotation (CW/CCW)
-    DROP,           // Client envoie drop (SOFT/HARD)
-    GAME_STATE,     // Serveur envoie état complet
-    LINES_CLEARED,  // Client notifie lignes nettoyées
-    ATTACK,         // Serveur envoie malus (mode avec malus)
-    GAME_OVER,      // Fin de partie (victoire/défaite)
-    DISCONNECT      // Déconnexion
+    JOIN,
+    JOIN_ACK,
+    START,
+    MOVE,
+    ROTATE,
+    DROP,
+    GAME_STATE,
+    LINES_CLEARED,
+    ATTACK,
+    GAME_OVER,
+    DISCONNECT
 };
 
 class Message {
@@ -21,23 +22,23 @@ public:
     Message();
     explicit Message(MessageType type, int playerId = -1);
 
-    // Getters
     MessageType getType() const;
     int getPlayerId() const;
     uint32_t getTimestamp() const;
 
-    // Setters
     void setPlayerId(int id);
     void setTimestamp(uint32_t ts);
 
-    // Payload
     sf::Packet& payload();
     const sf::Packet& payload() const;
     void clearPayload();
 
-    // Network
     bool send(sf::TcpSocket& socket) const;
     static bool receive(sf::TcpSocket& socket, Message& outMessage);
+    
+    std::vector<uint8_t> serialize() const;
+    
+    static Message deserialize(const uint8_t* data, size_t size);
 
 private:
     void serialize(sf::Packet& packet) const;

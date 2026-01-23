@@ -66,7 +66,10 @@ int main() {
         }
         
         view.render(window, controller.getGameState(), controller.getMenuView(),
-                   controller.getMenuState(), controller.getSelectedOption());
+                   controller.getMenuState(), controller.getSelectedOption(),
+                   controller.isHosting(), controller.isClientConnected(),
+                   controller.getIPInput(), controller.getServerLocalIP(),
+                   controller.getServerPublicIP(), controller.isNetworkMode());
     }
 
     return 0;

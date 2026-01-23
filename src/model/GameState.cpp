@@ -319,6 +319,63 @@ GameMode* GameState::getGameMode() const {
     return m_gameMode.get();
 }
 
+void GameState::addGarbageLines(int numLines) {
+    if (numLines <= 0) return;
+    if (numLines >= Board::Height) {
+        // Too many lines, game over
+        m_gameOver = true;
+        return;
+    }
+    
+    // Shift all existing blocks up by numLines
+    // Copy from bottom to top
+    for (int y = 0; y < Board::Height - numLines; y++) {
+        for (int x = 0; x < Board::Width; x++) {
+            int sourceY = y + numLines;
+            int cellValue = m_board.getCell(x, sourceY);
+            m_board.setCell(x, y, cellValue);
+        }
+    }
+    
+    // Add garbage lines at the bottom with random holes (1 hole per line)
+    for (int line = 0; line < numLines; line++) {
+        int garbageY = Board::Height - numLines + line;
+        int holeX = rand() % Board::Width;  // Random hole position
+        
+        for (int x = 0; x < Board::Width; x++) {
+            if (x == holeX) {
+                // Leave one hole per line
+                m_board.setCell(x, garbageY, 0);
+            } else {
+                // Fill with garbage (use color ID 8 for garbage)
+                m_board.setCell(x, garbageY, 8);
+            }
+        }
+    }
+    
+    // Check if piece is now in an invalid position
+    if (m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
+        // Piece is colliding, try to move it up
+        while (m_y > 0 && m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
+            m_y--;
+        }
+        
+        // If still colliding, game over
+        if (m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
+            m_gameOver = true;
+        }
+    }
+}
+
+void GameState::syncBoard(const Board& board) {
+    // Copy board cell by cell
+    for (int y = 0; y < Board::Height; y++) {
+        for (int x = 0; x < Board::Width; x++) {
+            m_board.setCell(x, y, board.getCell(x, y));
+        }
+    }
+}
+
 // Spawn a new random piece at the top
 void GameState::spawnNewPiece() {
     // Vérifier si le sac est vide
