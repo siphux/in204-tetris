@@ -173,6 +173,14 @@ size_t NetworkSession::receivePacket(uint8_t* outData, size_t maxSize) {
 
     size_t received = 0;
     if (m_socket->receive(outData, maxSize, received) == sf::Socket::Status::Done) {
+        // Heartbeat packets are a single 0xFF byte; update timer and swallow them
+        if (received == 1 && outData[0] == 0xFF) {
+            m_lastHeartbeatReceived = std::chrono::steady_clock::now();
+            return 0;
+        }
+
+        // Any other payload counts as activity for timeout purposes
+        m_lastHeartbeatReceived = std::chrono::steady_clock::now();
         return received;
     }
 
@@ -330,10 +338,12 @@ std::string NetworkSession::getSystemLocalIP() const {
             if (strncmp(line, "nameserver", 10) == 0) {
                 char ip[INET_ADDRSTRLEN];
                 if (sscanf(line, "nameserver %s", ip) == 1) {
-                    // Check if it's a valid IP (not 127.0.0.1 or 127.0.0.53)
-                    if (strcmp(ip, "127.0.0.1") != 0 && strcmp(ip, "127.0.0.53") != 0) {
-                        wslHostIP = std::string(ip);
-                        std::cerr << "[HOST] Detected WSL2 - Windows host IP: " << wslHostIP << std::endl;
+                    const std::string candidate(ip);
+                    const bool isLoopback = (candidate == "127.0.0.1" || candidate == "127.0.0.53");
+                    const bool isPrivate = (candidate.rfind("192.168.", 0) == 0) || (candidate.rfind("10.", 0) == 0);
+                    if (!isLoopback && isPrivate) {
+                        wslHostIP = candidate;
+                        std::cerr << "[HOST] WSL2 nameserver (Windows Wi-Fi/Ethernet) IP: " << wslHostIP << std::endl;
                         break;
                     }
                 }
@@ -346,9 +356,9 @@ std::string NetworkSession::getSystemLocalIP() const {
     auto localAddr = sf::IpAddress::getLocalAddress();
     if (localAddr.has_value()) {
         std::string ip = localAddr->toString();
-        // If we're in WSL2 and got a Windows host IP, prefer that
+        // Prefer nameserver-derived Windows IP only when it's a private LAN address
         if (!wslHostIP.empty()) {
-            std::cerr << "[HOST] WSL2 detected - use Windows host IP: " << wslHostIP << " (not WSL2 IP: " << ip << ")" << std::endl;
+            std::cerr << "[HOST] WSL2 detected - prefer Windows host IP: " << wslHostIP << " (SFML local: " << ip << ")" << std::endl;
             return wslHostIP;
         }
         // Skip WSL2 virtual network IPs (172.18-31.x.x range)
@@ -402,8 +412,8 @@ std::string NetworkSession::getSystemLocalIP() const {
         freeifaddrs(ifaddr);
     }
 
-    // If we're in WSL2 and found Windows host IP, use it instead
-    if (!wslHostIP.empty() && result.find("172.18.") == 0) {
+    // If we found a private Windows host IP, prefer it over WSL NAT addresses
+    if (!wslHostIP.empty()) {
         std::cerr << "[HOST] Using Windows host IP for WSL2: " << wslHostIP << std::endl;
         return wslHostIP;
     }

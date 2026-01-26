@@ -149,9 +149,20 @@ void MultiplayerEngine::update(float deltaTime) {
     // Update network session (check connection, heartbeat, etc.)
     m_networkSession->update();
 
-    // Check if we're still connected
+    const bool isHost = m_networkSession->getRole() == NetworkSession::SessionRole::HOST;
+
+    // If we're the host waiting in the lobby, attempt to accept incoming connections
+    if (isHost && m_engineState == EngineState::LOBBY &&
+        m_networkSession->getStatus() == NetworkSession::ConnectionStatus::CONNECTING) {
+        if (m_networkSession->pollIncomingConnection()) {
+            std::cerr << "[HOST] Client connected! Starting game..." << std::endl;
+            m_engineState = EngineState::GAME_RUNNING;
+        }
+    }
+
+    // Check if we're still connected after any accept attempt
     if (!m_networkSession->isConnected()) {
-        // If we're still trying to connect, wait
+        // If we're still trying to connect, keep the lobby alive for hosts/clients
         if (m_networkSession->getStatus() == NetworkSession::ConnectionStatus::CONNECTING) {
             return;
         }
@@ -167,15 +178,6 @@ void MultiplayerEngine::update(float deltaTime) {
     // If we just connected, start the game
     if (m_engineState == EngineState::IDLE && m_networkSession->isConnected()) {
         m_engineState = EngineState::GAME_RUNNING;
-    }
-
-    // If we're the host, check for incoming connections
-    if (m_networkSession->getRole() == NetworkSession::SessionRole::HOST) {
-        if (m_engineState == EngineState::LOBBY && m_networkSession->pollIncomingConnection()) {
-            // Client connected! Start the game
-            std::cerr << "[HOST] Client connected! Starting game..." << std::endl;
-            m_engineState = EngineState::GAME_RUNNING;
-        }
     }
 
     processNetworkMessages();
