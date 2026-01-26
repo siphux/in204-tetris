@@ -1,37 +1,47 @@
 #include "GameView.h"
 #include "../model/LevelBasedMode.h"
 #include "../model/DeathrunMode.h"
+#include "../model/AIMode.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
 
+// GameView: Handles all rendering (drawing) of the game
+// This includes the board, pieces, UI, menus, etc.
+
+// Initialize the view - try to load a font for text rendering
 GameView::GameView() : m_fontLoaded(false) {
-    // Essayer de charger une police système ou inclure une police TTF
-    // Option 1: Utiliser une police système (Linux)
+    // Try to load a system font for displaying text
+    // Option 1: Try DejaVu Sans (common on Linux)
     if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
-        // Option 2: Essayer une autre police commune
+        // Option 2: Try Liberation Sans (another common Linux font)
         if (!m_font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")) {
-            // Option 3: Police par défaut (peut ne pas fonctionner)
+            // Couldn't load any font - text might not display correctly
             m_fontLoaded = false;
         } else {
-            m_fontLoaded = true;
+            m_fontLoaded = true;  // Successfully loaded Liberation Sans
         }
     } else {
-        m_fontLoaded = true;
+        m_fontLoaded = true;  // Successfully loaded DejaVu Sans
     }
 }
 
+// Main render function - draws everything to the screen
+// Called every frame to update what the player sees
 void GameView::render(sf::RenderWindow& window, const GameState& state,
                       const MenuView& menuView, MenuState menuState, int selectedOption,
                       bool isHosting, bool isClientConnected, const std::string& ipInput,
                       const std::string& serverLocalIP, const std::string& serverPublicIP,
-                      bool isNetworkMode) {
+                      bool isNetworkMode, const std::string& connectionError,
+                      const GameState* remoteState, uint32_t latency) {
+    // Clear the window with black background
     window.clear(sf::Color::Black);
 
-    // Always render the game in the background
-    renderGame(window, state);
+    // Always render the game in the background (even if menu is showing)
+    bool isConnected = isNetworkMode && isClientConnected;
+    renderGame(window, state, isNetworkMode, remoteState, isConnected, latency);
 
-    // Then render menu on top if active
+    // Then render menu on top if a menu is active
     if (menuState != MenuState::NONE) {
         switch (menuState) {
             case MenuState::MAIN_MENU:
@@ -53,7 +63,7 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
                 menuView.renderJoinGame(window, selectedOption);
                 break;
             case MenuState::ENTER_IP:
-                menuView.renderEnterIP(window, ipInput, selectedOption);
+                menuView.renderEnterIP(window, ipInput, selectedOption, connectionError);
                 break;
             case MenuState::PAUSE_MENU:
                 menuView.renderPauseMenu(window, selectedOption, isNetworkMode);
@@ -69,20 +79,55 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
     window.display();
 }
 
-void GameView::renderGame(sf::RenderWindow& window, const GameState& state) {
-    if (state.isGameOver() && false) { // Don't draw game over here, let controller handle menu
-        drawGameOverScreen(window, state.score());
+// Render the actual game (board, pieces, UI)
+// Handles both single-player and multiplayer (split-screen) modes
+void GameView::renderGame(sf::RenderWindow& window, const GameState& state, 
+                          bool isMultiplayer, const GameState* remoteState,
+                          bool isConnected, uint32_t latency) {
+    // Game over is handled by the menu system, not here
+    
+    // Check if we're in multiplayer mode with a remote player
+    if (isMultiplayer && remoteState) {
+        // Split-screen multiplayer mode - show both players side by side
+        float windowWidth = static_cast<float>(window.getSize().x);
+        float windowHeight = static_cast<float>(window.getSize().y);
+        float boardWidth = Board::Width * CellSize;  // Width of one board in pixels
+        float boardHeight = (Board::Height - 1) * CellSize;  // Height of board in pixels
+        float spacing = 20.0f;  // Space between the two boards
+        float totalWidth = boardWidth * 2 + spacing;  // Total width needed
+        float startX = (windowWidth - totalWidth) / 2.0f;  // Center the boards
+        
+        // Left board (local player)
+        float leftX = startX - BoardOffsetX;
+        drawBoard(window, state.board(), state, leftX, 0.0f);
+        if (!state.isClearingLines()) {
+            drawCurrentPiece(window, state, leftX, 0.0f);
+        }
+        drawNextPiece(window, state.nextPiece(), leftX - 80.0f, 0.0f);
+        drawUI(window, state, leftX + BoardOffsetX, "You");
+        
+        // Right board (remote player)
+        float rightX = startX + boardWidth + spacing - BoardOffsetX;
+        drawBoard(window, remoteState->board(), *remoteState, rightX, 0.0f);
+        if (!remoteState->isClearingLines()) {
+            drawCurrentPiece(window, *remoteState, rightX, 0.0f);
+        }
+        drawNextPiece(window, remoteState->nextPiece(), rightX + boardWidth + 20.0f, 0.0f);
+        drawUI(window, *remoteState, rightX + BoardOffsetX, "Opponent");
+        
+        // Connection status
+        drawConnectionStatus(window, isConnected, latency);
     } else {
-        // Dessiner le board avec animation si nécessaire
+        // Solo mode - normal rendering
         drawBoard(window, state.board(), state);
         
-        // Ne pas dessiner la pièce courante pendant l'animation de suppression
         if (!state.isClearingLines()) {
             drawCurrentPiece(window, state);
         }
         
-        drawNextPiece(window, state.nextPiece());
-
+        // Next piece preview to the right of the board
+        float nextPieceX = BoardOffsetX + Board::Width * CellSize + 50.0f;
+        drawNextPiece(window, state.nextPiece(), nextPieceX - BoardOffsetX, 0.0f);
         drawUI(window, state);
     }
 }
@@ -100,10 +145,14 @@ sf::Color GameView::colorForId(int colorId) const {
     }
 }
 
-void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const GameState& state) {
+void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const GameState& state,
+                         float offsetX, float offsetY) {
     sf::RectangleShape cell;
     cell.setSize(sf::Vector2f(static_cast<float>(CellSize - 1),
                               static_cast<float>(CellSize - 1)));
+
+    float boardX = BoardOffsetX + offsetX;
+    float boardY = BoardOffsetY + offsetY;
 
     // Obtenir le progrès de l'animation si une suppression est en cours
     float animationProgress = state.isClearingLines() ? state.getClearAnimationProgress() : 0.0f;
@@ -127,8 +176,8 @@ void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const Gam
                 cell.setFillColor(colorForId(value)); // Couleur normale
             }
             
-            cell.setPosition({static_cast<float>(BoardOffsetX + x * CellSize),
-                              static_cast<float>(BoardOffsetY + (y - 1) * CellSize)});
+            cell.setPosition({boardX + static_cast<float>(x * CellSize),
+                              boardY + static_cast<float>((y - 1) * CellSize)});
             window.draw(cell);
         }
     }
@@ -137,17 +186,21 @@ void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const Gam
     sf::RectangleShape border;
     border.setSize(sf::Vector2f(static_cast<float>(Board::Width * CellSize),
                                 static_cast<float>((Board::Height - 1) * CellSize)));
-    border.setPosition({static_cast<float>(BoardOffsetX), static_cast<float>(BoardOffsetY)});
+    border.setPosition({boardX, boardY});
     border.setFillColor(sf::Color::Transparent);
     border.setOutlineColor(sf::Color::White);
     border.setOutlineThickness(2.f);
     window.draw(border);
 }
 
-void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state) {
+void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state,
+                                 float offsetX, float offsetY) {
     const Tetromino& piece = state.currentPiece();
     const int baseX = state.pieceX();
     const int baseY = state.pieceY();
+
+    float boardX = BoardOffsetX + offsetX;
+    float boardY = BoardOffsetY + offsetY;
 
     sf::RectangleShape block;
     block.setSize(sf::Vector2f(static_cast<float>(CellSize - 1),
@@ -169,8 +222,8 @@ void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state
         const int x = baseX + offset.x;
         const int y = ghostY + offset.y;
         if (x >= 0 && x < Board::Width && y >= 1 && y < Board::Height) {
-            ghostBlock.setPosition({static_cast<float>(BoardOffsetX + x * CellSize),
-                                    static_cast<float>(BoardOffsetY + (y - 1) * CellSize)});
+            ghostBlock.setPosition({boardX + static_cast<float>(x * CellSize),
+                                    boardY + static_cast<float>((y - 1) * CellSize)});
             window.draw(ghostBlock);
         }
     }
@@ -183,15 +236,16 @@ void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state
             continue;
         }
 
-        block.setPosition({static_cast<float>(BoardOffsetX + x * CellSize),
-                           static_cast<float>(BoardOffsetY + (y - 1) * CellSize)});
+        block.setPosition({boardX + static_cast<float>(x * CellSize),
+                           boardY + static_cast<float>((y - 1) * CellSize)});
         window.draw(block);
     }
 }
 
-void GameView::drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiece) {
-    const int previewX = BoardOffsetX + Board::Width * CellSize + 50;
-    const int previewY = BoardOffsetY + 50;
+void GameView::drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiece,
+                             float offsetX, float offsetY) {
+    float previewX = BoardOffsetX + offsetX;
+    float previewY = BoardOffsetY + offsetY;
 
     // Label "NEXT"
     if (m_fontLoaded) {
@@ -214,8 +268,8 @@ void GameView::drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiec
     const int width = maxX - minX + 1;
     const int height = maxY - minY + 1;
 
-    const int offsetX = previewX + (4 - width) * CellSize / 2;
-    const int offsetY = previewY + (4 - height) * CellSize / 2;
+    const float pieceOffsetX = previewX + (4 - width) * CellSize / 2.0f;
+    const float pieceOffsetY = previewY + (4 - height) * CellSize / 2.0f;
 
     sf::RectangleShape block;
     block.setSize(sf::Vector2f(static_cast<float>(CellSize - 1),
@@ -225,18 +279,35 @@ void GameView::drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiec
     for (const auto& b : nextPiece.getBlocks()) {
         const int x = b.x - minX;
         const int y = b.y - minY;
-        block.setPosition({static_cast<float>(offsetX + x * CellSize),
-                           static_cast<float>(offsetY + y * CellSize)});
+        block.setPosition({pieceOffsetX + static_cast<float>(x * CellSize),
+                           pieceOffsetY + static_cast<float>(y * CellSize)});
         window.draw(block);
     }
 }
 
-void GameView::drawUI(sf::RenderWindow& window, const GameState& state) {
+void GameView::drawUI(sf::RenderWindow& window, const GameState& state,
+                      float offsetX, const std::string& playerLabel) {
     if (!m_fontLoaded) return; // Pas de police, pas d'UI texte
 
-    const float uiX = BoardOffsetX + Board::Width * CellSize + 50.0f;
+    float uiX;
+    if (offsetX == 0.0f && playerLabel.empty()) {
+        // Solo mode: position UI to the right of the board
+        uiX = BoardOffsetX + Board::Width * CellSize + 50.0f;
+    } else {
+        // Multiplayer mode: use provided offset
+        uiX = BoardOffsetX + offsetX;
+    }
     float uiY = BoardOffsetY + 200.0f;
     const float lineHeight = 30.0f;
+
+    // Player label (for multiplayer)
+    if (!playerLabel.empty()) {
+        sf::Text labelText(m_font, playerLabel);
+        labelText.setCharacterSize(28);
+        labelText.setFillColor(sf::Color::Yellow);
+        labelText.setPosition({uiX, uiY - 40.0f});
+        window.draw(labelText);
+    }
 
     // Score
     sf::Text scoreText(m_font, "Score: " + std::to_string(state.score()));
@@ -267,10 +338,17 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state) {
             window.draw(timeText);
         }
     } else {
-        // Show level for level-based mode
+        // Show level for level-based mode or AI mode
         const auto* levelMode = dynamic_cast<const LevelBasedMode*>(state.getGameMode());
+        const auto* aiMode = dynamic_cast<const AIMode*>(state.getGameMode());
         if (levelMode) {
             sf::Text levelText(m_font, "Level: " + std::to_string(levelMode->getCurrentLevel()));
+            levelText.setCharacterSize(20);
+            levelText.setFillColor(sf::Color::Green);
+            levelText.setPosition({uiX, uiY});
+            window.draw(levelText);
+        } else if (aiMode) {
+            sf::Text levelText(m_font, "Level: " + std::to_string(aiMode->getCurrentLevel()));
             levelText.setCharacterSize(20);
             levelText.setFillColor(sf::Color::Green);
             levelText.setPosition({uiX, uiY});
@@ -286,6 +364,27 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state) {
         linesText.setFillColor(sf::Color::Yellow);
         linesText.setPosition({uiX, uiY});
         window.draw(linesText);
+    }
+}
+
+void GameView::drawConnectionStatus(sf::RenderWindow& window, bool isConnected, uint32_t latency) {
+    if (!m_fontLoaded) return;
+    
+    float statusX = 10.0f;
+    float statusY = 10.0f;
+    
+    sf::Text statusText(m_font, isConnected ? "Connected" : "Disconnected");
+    statusText.setCharacterSize(18);
+    statusText.setFillColor(isConnected ? sf::Color::Green : sf::Color::Red);
+    statusText.setPosition({statusX, statusY});
+    window.draw(statusText);
+    
+    if (isConnected && latency > 0) {
+        sf::Text latencyText(m_font, "Latency: " + std::to_string(latency) + "ms");
+        latencyText.setCharacterSize(16);
+        latencyText.setFillColor(sf::Color::Cyan);
+        latencyText.setPosition({statusX, statusY + 25.0f});
+        window.draw(latencyText);
     }
 }
 

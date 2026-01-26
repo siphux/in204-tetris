@@ -1,14 +1,17 @@
 #include "MenuView.h"
 #include <string>
 
+// MenuView: Handles rendering of all menus (main menu, mode selection, etc.)
+
+// Initialize the menu view - try to load a font for text
 MenuView::MenuView() : m_fontLoaded(false) {
-    // Try to load a system font
-    if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") &&
-        !m_font.openFromFile("/System/Library/Fonts/Arial.ttf") &&
-        !m_font.openFromFile("C:\\Windows\\Fonts\\arial.ttf")) {
-        m_fontLoaded = false;
+    // Try to load a system font (different paths for different operating systems)
+    if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") &&  // Linux
+        !m_font.openFromFile("/System/Library/Fonts/Arial.ttf") &&  // macOS
+        !m_font.openFromFile("C:\\Windows\\Fonts\\arial.ttf")) {  // Windows
+        m_fontLoaded = false;  // Couldn't load any font
     } else {
-        m_fontLoaded = true;
+        m_fontLoaded = true;  // Successfully loaded a font
     }
 }
 
@@ -74,7 +77,9 @@ void MenuView::renderMultiplayerMenu(sf::RenderWindow& window, int selectedOptio
     // Draw options
     drawMenuOption(window, "Host Game", 250.0f, selectedOption == 0);
     drawMenuOption(window, "Join Game", 250.0f + OPTION_SPACING, selectedOption == 1);
-    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+    drawMenuOption(window, "AI vs AI (Local)", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+    drawMenuOption(window, "Player vs AI", 250.0f + 3 * OPTION_SPACING, selectedOption == 3);
+    drawMenuOption(window, "Back", 250.0f + 4 * OPTION_SPACING, selectedOption == 4);
 }
 
 void MenuView::renderHostGame(sf::RenderWindow& window, bool isConnected, 
@@ -97,26 +102,34 @@ void MenuView::renderHostGame(sf::RenderWindow& window, bool isConnected,
         
         float yPos = 300.0f;
         
-        // Display public IP for internet play (preferred)
-        if (!publicIP.empty() && publicIP.find("public") == std::string::npos) {
-            std::string ipText = "Internet: " + publicIP;
+        drawCenteredText(window, "Connection Information:", 
+                        yPos, OPTION_SIZE * 0.8f, sf::Color::White);
+        yPos += 40.0f;
+        
+        // Display local IP for LAN play (show first as it's easier)
+        if (!localIP.empty() && localIP != "Unknown") {
+            std::string ipText = "Local Network: " + localIP + ":53000";
             drawCenteredText(window, ipText, 
                             yPos, OPTION_SIZE * 0.9f, sf::Color::Green);
-            yPos += 40.0f;
-            drawCenteredText(window, "Share this with your friend", 
-                            yPos, OPTION_SIZE * 0.7f, sf::Color::White);
+            yPos += 30.0f;
+            drawCenteredText(window, "Use this if on same Wi-Fi/router", 
+                            yPos, OPTION_SIZE * 0.6f, sf::Color::Cyan);
             yPos += 50.0f;
         }
         
-        // Display local IP for LAN play (fallback)
-        if (!localIP.empty() && localIP != "Unknown") {
-            std::string ipText = "Local Network: " + localIP;
+        // Display public IP for internet play
+        if (!publicIP.empty() && publicIP.find("public") == std::string::npos) {
+            std::string ipText = "Internet: " + publicIP + ":53000";
             drawCenteredText(window, ipText, 
-                            yPos, OPTION_SIZE * 0.9f, sf::Color::Cyan);
+                            yPos, OPTION_SIZE * 0.9f, sf::Color::Yellow);
+            yPos += 30.0f;
+            drawCenteredText(window, "Use this for different networks", 
+                            yPos, OPTION_SIZE * 0.6f, sf::Color::Cyan);
+            yPos += 30.0f;
+            drawCenteredText(window, "(Requires port forwarding)", 
+                            yPos, OPTION_SIZE * 0.5f, sf::Color::Red);
             yPos += 40.0f;
-        }
-        
-        if (publicIP.empty() || publicIP.find("public") != std::string::npos) {
+        } else if (publicIP.empty() || publicIP.find("public") != std::string::npos) {
             drawCenteredText(window, "Fetching public IP...", 
                             yPos, OPTION_SIZE * 0.7f, sf::Color::Yellow);
             yPos += 30.0f;
@@ -138,12 +151,16 @@ void MenuView::renderJoinGame(sf::RenderWindow& window, int selectedOption) cons
     drawCenteredText(window, "Join Game", 100.0f, TITLE_SIZE, sf::Color::White);
 
     // Draw connection options
-    drawMenuOption(window, "Connect to localhost", 250.0f, selectedOption == 0);
-    drawMenuOption(window, "Enter IP address", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawMenuOption(window, "Local Network", 250.0f, selectedOption == 0);
+    drawCenteredText(window, "Same Wi-Fi/router", 250.0f + 30.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
+    
+    drawMenuOption(window, "Internet", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawCenteredText(window, "Different networks", 250.0f + OPTION_SPACING + 30.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
+    
     drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
 }
 
-void MenuView::renderEnterIP(sf::RenderWindow& window, const std::string& currentIP, int selectedOption) const {
+void MenuView::renderEnterIP(sf::RenderWindow& window, const std::string& currentIP, int selectedOption, const std::string& errorMessage) const {
     sf::RectangleShape background({static_cast<float>(window.getSize().x),
                                   static_cast<float>(window.getSize().y)});
     background.setFillColor(sf::Color::Black);
@@ -160,7 +177,16 @@ void MenuView::renderEnterIP(sf::RenderWindow& window, const std::string& curren
     drawCenteredText(window, "Port is optional (default: 53000)", 
                     330.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
     
-    drawMenuOption(window, "Back", 400.0f, selectedOption == 1);
+    drawCenteredText(window, "Local Network: Use 192.168.x.x (same Wi-Fi)", 
+                    360.0f, OPTION_SIZE * 0.6f, sf::Color::Green);
+    drawCenteredText(window, "Internet: Use public IP (different networks)", 
+                    385.0f, OPTION_SIZE * 0.6f, sf::Color::Yellow);
+    
+    if (!errorMessage.empty()) {
+        drawCenteredText(window, errorMessage, 410.0f, OPTION_SIZE * 0.6f, sf::Color::Red);
+    }
+    
+    drawMenuOption(window, "Back", 450.0f, selectedOption == 1);
     
     drawCenteredText(window, "Backspace to delete | Enter to connect", 
                     460.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
@@ -231,7 +257,7 @@ int MenuView::getOptionCount(MenuState menuState, bool isMultiplayer) const {
         case MenuState::AI_SELECTION:
             return 3; // Simple AI, Advanced AI, Back
         case MenuState::MULTIPLAYER_MENU:
-            return 3; // Host Game, Join Game, Back
+            return 5; // Host Game, Join Game, AI vs AI (Local), Player vs AI, Back
         case MenuState::HOST_GAME:
             return 1; // Cancel option
         case MenuState::JOIN_GAME:

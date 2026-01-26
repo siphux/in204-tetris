@@ -1,11 +1,15 @@
 #include <SFML/Graphics.hpp>
 #include "controller/GameController.h"
 #include "view/GameView.h"
+#include "network/NetworkConfig.h"
 #include <cstdlib>
 #include <ctime>
 
 int main() {
-    // Seed the random number generator to ensure unique piece sequences
+    // Load network and game settings from config.ini
+    NetworkConfig::getInstance().loadFromFile();
+    
+    // Seed the random number generator so we get different piece sequences each game
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     // Create window first
@@ -34,6 +38,10 @@ int main() {
     
     window.setPosition({centerX, centerY});
     window.setFramerateLimit(60);
+    
+    // Disable key repeat to prevent multiple key press events when holding keys
+    // This makes input handling more predictable, especially in multiplayer
+    window.setKeyRepeatEnabled(false);
 
     GameController controller;
     GameView view;
@@ -65,11 +73,14 @@ int main() {
             window.close();
         }
         
+        const GameState* remoteState = controller.isNetworkMode() ? &controller.getRemoteGameState() : nullptr;
         view.render(window, controller.getGameState(), controller.getMenuView(),
                    controller.getMenuState(), controller.getSelectedOption(),
                    controller.isHosting(), controller.isClientConnected(),
                    controller.getIPInput(), controller.getServerLocalIP(),
-                   controller.getServerPublicIP(), controller.isNetworkMode());
+                   controller.getServerPublicIP(), controller.isNetworkMode(),
+                   controller.getLastConnectionError(),
+                   remoteState, controller.getNetworkLatency());
     }
 
     return 0;

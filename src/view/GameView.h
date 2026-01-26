@@ -14,10 +14,14 @@ public:
                const MenuView& menuView, MenuState menuState, int selectedOption,
                bool isHosting = false, bool isClientConnected = false,
                const std::string& ipInput = "", const std::string& serverLocalIP = "",
-               const std::string& serverPublicIP = "", bool isNetworkMode = false);
+               const std::string& serverPublicIP = "", bool isNetworkMode = false,
+               const std::string& connectionError = "",
+               const GameState* remoteState = nullptr, uint32_t latency = 0);
 
     // Render just the game (without menu overlay)
-    void renderGame(sf::RenderWindow& window, const GameState& state);
+    void renderGame(sf::RenderWindow& window, const GameState& state, 
+                   bool isMultiplayer = false, const GameState* remoteState = nullptr,
+                   bool isConnected = false, uint32_t latency = 0);
 
 private:
     static constexpr int CellSize = 30;
@@ -29,9 +33,14 @@ private:
 
     sf::Color colorForId(int colorId) const;
 
-    void drawBoard(sf::RenderWindow& window, const Board& board, const GameState& state);
-    void drawCurrentPiece(sf::RenderWindow& window, const GameState& state);
-    void drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiece);
-    void drawUI(sf::RenderWindow& window, const GameState& state);
+    void drawBoard(sf::RenderWindow& window, const Board& board, const GameState& state, 
+                   float offsetX = 0.0f, float offsetY = 0.0f);
+    void drawCurrentPiece(sf::RenderWindow& window, const GameState& state, 
+                          float offsetX = 0.0f, float offsetY = 0.0f);
+    void drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiece, 
+                       float offsetX = 0.0f, float offsetY = 0.0f);
+    void drawUI(sf::RenderWindow& window, const GameState& state, 
+                float offsetX = 0.0f, const std::string& playerLabel = "");
     void drawGameOverScreen(sf::RenderWindow& window, int finalScore);
+    void drawConnectionStatus(sf::RenderWindow& window, bool isConnected, uint32_t latency);
 };

@@ -1,28 +1,33 @@
 #include "GameState.h"
 #include "GameMode.h"
 #include "LevelBasedMode.h"
+#include "AIMode.h"
 #include <cstdlib> // for rand()
 #include <algorithm> // for std::sort, std::greater
 
+// Refill the piece bag with all 7 tetromino types
+// Uses "bag system" - ensures you get all 7 pieces before getting repeats
 void GameState::refillBag() {
+    // Put all 7 piece types in the bag
     m_pieceBag = {
         TetrominoType::I, TetrominoType::J, TetrominoType::L,
         TetrominoType::O, TetrominoType::S, TetrominoType::T, TetrominoType::Z
     };
         
-    // Mélanger (Fisher-Yates shuffle)
+    // Shuffle the bag (Fisher-Yates shuffle algorithm)
+    // This randomizes the order so pieces come in random sequence
     for (int i = 6; i > 0; i--) {
-        int j = rand() % (i + 1);
-        std::swap(m_pieceBag[i], m_pieceBag[j]);
+        int j = rand() % (i + 1);  // Pick a random position
+        std::swap(m_pieceBag[i], m_pieceBag[j]);  // Swap pieces
     }
         
-    m_bagIndex = 0;
+    m_bagIndex = 0;  // Start from the beginning of the bag
 }
 
 GameState::GameState()
     : m_currentPiece(TetrominoType::I), // Placeholder, will be replaced
       m_nextPiece(TetrominoType::I),  // Placeholder, will be replaced
-      m_x(4), m_y(0),
+      m_x(4), m_y(-1),  // Spawn in hidden row
       m_fallTimer(0.f),
       m_isClearingLines(false),
       m_clearAnimationTimer(0.0f),
@@ -35,74 +40,85 @@ GameState::GameState()
 
 GameState::~GameState() = default;
 
-// Update game logic
+// Update game logic every frame
+// This makes pieces fall, checks for line clears, spawns new pieces, etc.
 void GameState::update(float deltaTime) {
-    // Update mode-specific logic
+    // Update mode-specific logic (level progression, speed changes, etc.)
     if (m_gameMode) {
         m_gameMode->update(deltaTime, *this);
     }
 
+    // If we're clearing lines, show the animation instead of falling
     if (m_isClearingLines && !m_gameOver) {
         updateClearingAnimation(deltaTime);
-        return; // Ne pas faire tomber la pièce pendant l'animation
+        return;  // Don't make the piece fall during line clearing animation
     }
     
+    // If game is over, don't update anything
     if (m_gameOver) {
-        return; // Ne rien faire si le jeu est terminé
+        return;
     }
     
+    // Make the piece fall automatically
     m_fallTimer += deltaTime;
-    float fallSpeed = m_gameMode ? m_gameMode->getFallSpeed() : 0.5f;
+    float fallSpeed = m_gameMode ? m_gameMode->getFallSpeed() : 0.5f;  // Get fall speed from game mode
     if (m_fallTimer > fallSpeed) {
-        softDrop(); // piece moves down automatically
-        m_fallTimer = 0.f;
+        softDrop();  // Move piece down one row
+        m_fallTimer = 0.f;  // Reset timer
     }
 }
 
+// Move the current piece one space to the left
 void GameState::moveLeft() {
-    m_x--;
+    m_x--;  // Try moving left
     if (m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
-        // Collision - revert move
+        // Collision detected - can't move here, so move back
         m_x++;
     }
 }
 
+// Move the current piece one space to the right
 void GameState::moveRight() {
-    m_x++;
+    m_x++;  // Try moving right
     if (m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
-        // Collision - revert move
+        // Collision detected - can't move here, so move back
         m_x--;
     }
 }
 
+// Rotate the piece clockwise (to the right)
+// Uses "wall kicks" - if rotation would hit a wall, try moving the piece slightly
 void GameState::rotateClockwise() {
+    // Remember the rotation state before rotating
     RotationState oldState = m_currentPiece.getRotationState();
-    m_currentPiece.rotateClockwise();
+    m_currentPiece.rotateClockwise();  // Try to rotate
     RotationState newState = m_currentPiece.getRotationState();
     
-    // Get wall kick offsets for this rotation
+    // Get wall kick offsets - these are small position adjustments to try
+    // if the rotation would normally hit a wall
     const auto& wallKicks = Tetromino::getWallKicks(
         m_currentPiece.getType(), oldState, newState
     );
     
-    // Try each wall kick offset
+    // Try each wall kick offset to see if any of them work
     bool rotated = false;
     for (const auto& kick : wallKicks) {
-        int testX = m_x + kick.x;
+        int testX = m_x + kick.x;  // Try moving piece slightly
         int testY = m_y + kick.y;
         
+        // Check if this position works (no collision)
         if (!m_board.checkCollision(m_currentPiece.getBlocks(), testX, testY)) {
-            // This offset works!
+            // This offset works! Use it
             m_x = testX;
             m_y = testY;
             rotated = true;
-            break;
+            break;  // Found a working position, stop trying
         }
     }
     
-    // If no wall kick worked, revert rotation
+    // If no wall kick worked, the rotation is impossible - revert it
     if (!rotated) {
-        m_currentPiece.rotateCounterClockwise();
+        m_currentPiece.rotateCounterClockwise();  // Undo the rotation
     }
 }
 
@@ -137,32 +153,36 @@ void GameState::rotateCounterClockwise() {
     }
 }
 
-// Move piece down by one row
+// Move piece down by one row (called automatically or when holding down arrow)
 void GameState::softDrop() {
-    m_y++;
+    m_y++;  // Try moving down
     if (m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
-        // Collision - piece can't fall further
-        m_y--; // Move back up
-        lockPiece(); // Lock the piece into the board
+        // Collision detected - piece can't fall further
+        m_y--;  // Move back up to the last valid position
+        lockPiece();  // Lock the piece into the board (it can't move anymore)
     }
 }
 
-// Drop piece instantly to the bottom
+// Drop piece instantly to the bottom (when player presses space)
 void GameState::hardDrop() {
-    // Move down until we hit something
+    // Keep moving down until we hit something (board or bottom)
     while (!m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y + 1)) {
-        m_y++;
+        m_y++;  // Move down one more row
     }
-    // Lock the piece immediately
+    // Piece is now at the bottom - lock it immediately
     lockPiece();
 }
 
-// Lock piece into the board
+// Lock piece into the board (piece can't move anymore)
+// This happens when the piece hits something below it
 void GameState::lockPiece() {
-    // Place piece blocks into board
+    // Place each block of the piece into the board
     for (const auto& block : m_currentPiece.getBlocks()) {
+        // Calculate the board position of this block
         int bx = m_x + block.x;
         int by = m_y + block.y;
+        
+        // Make sure the position is valid, then place the block
         if (m_board.isInside(bx, by)) {
             m_board.setCell(bx, by, m_currentPiece.getColorId());
         }
@@ -201,46 +221,63 @@ void GameState::lockPiece() {
     }
 }
 
+// Update the line clearing animation
+// Shows a visual effect before actually removing the lines
 void GameState::updateClearingAnimation(float deltaTime) {
     if (!m_isClearingLines) return;
     
     m_clearAnimationTimer += deltaTime;
     
+    // When animation is done, actually remove the lines
     if (m_clearAnimationTimer >= CLEAR_ANIMATION_DURATION) {
-        // Animation terminée, supprimer les lignes
-        // Reconstruire le board en compactant les lignes (suppression + gravité)
-        int writeY = Board::Height - 1;
+        // Animation finished - now remove the lines
+        // Rebuild the board by compacting lines (remove cleared lines, make others fall down)
+        int writeY = Board::Height - 1;  // Where we'll write the next line
 
+        // Go through each row from bottom to top
         for (int readY = Board::Height - 1; readY >= 0; readY--) {
-            // Vérifier si la ligne est marquée pour suppression (-1)
-            // On vérifie la première cellule (toute la ligne est à -1 si marquée)
+            // Check if this line is marked for deletion (-1 means "being cleared")
+            // We check the first cell - if it's -1, the whole line is marked
             if (m_board.getCell(0, readY) == -1) {
-                continue; // On saute cette ligne (elle est supprimée)
+                continue;  // Skip this line - it's being deleted
             }
 
-            // Si ce n'est pas une ligne à supprimer, on la déplace vers le bas (writeY)
+            // This line is not being deleted - move it down to fill the gap
             if (writeY != readY) {
+                // Copy the entire row
                 for (int x = 0; x < Board::Width; x++) {
                     m_board.setCell(x, writeY, m_board.getCell(x, readY));
                 }
             }
-            writeY--;
+            writeY--;  // Move to the next position to write
         }
 
-        // Remplir le reste du haut avec des lignes vides
+        // Fill the remaining top rows with empty cells (they fell down)
         while (writeY >= 0) {
             for (int x = 0; x < Board::Width; x++) {
-                m_board.setCell(x, writeY, 0);
+                m_board.setCell(x, writeY, 0);  // 0 = empty cell
             }
             writeY--;
         }
         
-        // Mettre à jour score et mode
+        // Update score and game mode
         int linesCleared = static_cast<int>(m_linesToClear.size());
-        m_score.addLineClear(linesCleared, 0); // Level is now managed by mode
+        int currentLevel = 0;
         if (m_gameMode) {
+            // Get the current level from the game mode (for scoring)
+            // Different modes (LevelBased, AI) track levels differently
+            const auto* levelMode = dynamic_cast<const LevelBasedMode*>(m_gameMode.get());
+            const auto* aiMode = dynamic_cast<const AIMode*>(m_gameMode.get());
+            if (levelMode) {
+                currentLevel = levelMode->getCurrentLevel();
+            } else if (aiMode) {
+                currentLevel = aiMode->getCurrentLevel();
+            }
+            // Tell the game mode that lines were cleared (for level progression, etc.)
             m_gameMode->onLinesClear(linesCleared, *this);
         }
+        // Add points to the score based on how many lines were cleared and current level
+        m_score.addLineClear(linesCleared, currentLevel);
         
         // Réinitialiser l'état
         m_isClearingLines = false;
@@ -292,9 +329,17 @@ int GameState::getGhostY() const {
 }
 int GameState::score() const { return m_score.value(); }
 int GameState::level() const {
-    // If mode is LevelBasedMode, get level from it
-    // Otherwise return 0
-    return 0; // Mode manages level internally now
+    if (!m_gameMode) return 0;
+    
+    // Get level from mode if it supports it
+    const auto* levelMode = dynamic_cast<const LevelBasedMode*>(m_gameMode.get());
+    const auto* aiMode = dynamic_cast<const AIMode*>(m_gameMode.get());
+    if (levelMode) {
+        return levelMode->getCurrentLevel();
+    } else if (aiMode) {
+        return aiMode->getCurrentLevel();
+    }
+    return 0;
 }
 
 bool GameState::isGameOver() const {
@@ -367,8 +412,10 @@ void GameState::addGarbageLines(int numLines) {
     }
 }
 
+// Copy another board's state into this board
+// Used in multiplayer to sync the remote player's board
 void GameState::syncBoard(const Board& board) {
-    // Copy board cell by cell
+    // Copy every cell from the other board
     for (int y = 0; y < Board::Height; y++) {
         for (int x = 0; x < Board::Width; x++) {
             m_board.setCell(x, y, board.getCell(x, y));
@@ -376,28 +423,34 @@ void GameState::syncBoard(const Board& board) {
     }
 }
 
-// Spawn a new random piece at the top
+// Spawn a new random piece at the top of the board
+// Uses the "bag system" to ensure fair piece distribution
 void GameState::spawnNewPiece() {
-    // Vérifier si le sac est vide
+    // Check if the bag is empty (we've used all pieces)
     if (m_bagIndex >= m_pieceBag.size()) {
-        refillBag();
+        refillBag();  // Get a new bag of all 7 pieces
     }
         
-    // Prendre la prochaine pièce du sac
+    // Take the next piece from the bag
     m_currentPiece = Tetromino(m_pieceBag[m_bagIndex]);
-    m_bagIndex++;
+    m_bagIndex++;  // Move to next piece in bag
         
-    // Générer la prochaine pièce pour le preview
+    // Generate the next piece for the preview (so player can see what's coming)
     if (m_bagIndex >= m_pieceBag.size()) {
-        refillBag();
+        refillBag();  // If bag is empty, refill it
     }
-    m_nextPiece = Tetromino(m_pieceBag[m_bagIndex]);
+    m_nextPiece = Tetromino(m_pieceBag[m_bagIndex]);  // This is what will spawn next
         
-    m_x = 4;
-    m_y = 0;
+    // Position the new piece at the top center of the board
+    // Spawn at y = -1 to account for pieces that extend above their spawn point
+    // (e.g., J and L pieces have blocks at relative y = -1)
+    // This puts pieces in the hidden spawn row (row 0 is the first visible row)
+    m_x = 4;  // Center horizontally (board is 10 wide, so 4 is center)
+    m_y = -1;  // Spawn in hidden row (above visible board at row 0)
         
-    // Vérifier collision au spawn
+    // Check if the new piece collides immediately (game over condition)
+    // The checkCollision function allows y < 0 (above board), so this should work correctly
     if (m_board.checkCollision(m_currentPiece.getBlocks(), m_x, m_y)) {
-        m_gameOver = true;
+        m_gameOver = true;  // Can't spawn - game over!
     }
 }

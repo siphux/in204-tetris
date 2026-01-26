@@ -1,7 +1,10 @@
 #include "NetworkSession.h"
+#include "NetworkConfig.h"
 #include <cstring>
 #include <iostream>
 #include <sstream>
+#include <thread>
+#include <chrono>
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -17,7 +20,9 @@ NetworkSession::NetworkSession(SessionRole role, const std::string& playerName)
     : m_role(role),
       m_status(ConnectionStatus::DISCONNECTED),
       m_playerName(playerName),
-      m_latencyMs(0) {
+      m_latencyMs(0),
+      m_reconnectPort(0),
+      m_reconnectAttempts(0) {
 }
 
 NetworkSession::~NetworkSession() {
@@ -77,6 +82,10 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
         return false;
     }
 
+    if (timeoutMs < 0) {
+        timeoutMs = NetworkConfig::getInstance().getConnectionTimeoutMs();
+    }
+
     m_socket = std::make_unique<sf::TcpSocket>();
     
     auto ipAddressOpt = sf::IpAddress::resolve(hostAddress);
@@ -90,18 +99,20 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
     auto startTime = std::chrono::steady_clock::now();
     
     while (true) {
-        sf::Socket::Status status = m_socket->connect(ipAddress, port, sf::seconds(1.0f));
+        sf::Socket::Status status = m_socket->connect(ipAddress, port, sf::seconds(2.0f));
         
         if (status == sf::Socket::Status::Done) {
             m_socket->setBlocking(false);
             m_status = ConnectionStatus::CONNECTED;
             m_connectionStartTime = std::chrono::steady_clock::now();
             m_lastHeartbeatReceived = m_connectionStartTime;
+            m_reconnectAttempts = 0;
             return true;
         }
         
         if (status == sf::Socket::Status::Error) {
-            m_lastError = "Failed to connect to host: " + hostAddress + ":" + std::to_string(port);
+            m_lastError = "Failed to connect to host: " + hostAddress + ":" + std::to_string(port) + 
+                         " (Check firewall/port forwarding)";
             m_status = ConnectionStatus::ERROR;
             return false;
         }
@@ -109,10 +120,14 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
         if (elapsed > timeoutMs) {
-            m_lastError = "Connection timeout";
+            m_lastError = "Connection timeout after " + std::to_string(timeoutMs / 1000) + 
+                         " seconds. Check:\n- IP address is correct\n- Port " + std::to_string(port) + 
+                         " is forwarded on host's router\n- Firewall allows connections";
             m_status = ConnectionStatus::ERROR;
             return false;
         }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -156,19 +171,27 @@ void NetworkSession::update() {
     updateHeartbeat();
 }
 
+// Check if connection is still alive, and try to reconnect if needed
 void NetworkSession::updateConnectionTimeout() {
-    if (m_status != ConnectionStatus::CONNECTED) {
-        return;
+    // If we're connected, check if we've received a heartbeat recently
+    if (m_status == ConnectionStatus::CONNECTED) {
+        auto now = std::chrono::steady_clock::now();
+        auto timeSinceLastHeartbeat = std::chrono::duration_cast<std::chrono::seconds>(
+            now - m_lastHeartbeatReceived).count();
+
+        // If too much time has passed without a heartbeat, connection is dead
+        auto& config = NetworkConfig::getInstance();
+        if (timeSinceLastHeartbeat > config.getConnectionTimeoutSeconds()) {
+            disconnect();
+            m_lastError = "Connection timeout - no heartbeat received";
+            m_status = ConnectionStatus::ERROR;
+        }
     }
-
-    auto now = std::chrono::steady_clock::now();
-    auto timeSinceLastHeartbeat = std::chrono::duration_cast<std::chrono::seconds>(
-        now - m_lastHeartbeatReceived).count();
-
-    if (timeSinceLastHeartbeat > 10) {
-        disconnect();
-        m_lastError = "Connection timeout - no heartbeat received";
-        m_status = ConnectionStatus::ERROR;
+    // If connection failed and we're a client, try to reconnect
+    else if (m_status == ConnectionStatus::ERROR && m_role == SessionRole::CLIENT) {
+        if (shouldAttemptReconnect()) {
+            attemptReconnect(m_reconnectHost, m_reconnectPort);
+        }
     }
 }
 
@@ -177,11 +200,12 @@ void NetworkSession::updateHeartbeat() {
         return;
     }
 
+    auto& config = NetworkConfig::getInstance();
     auto now = std::chrono::steady_clock::now();
     auto timeSinceLastSent = std::chrono::duration_cast<std::chrono::seconds>(
         now - m_lastHeartbeatSent).count();
 
-    if (timeSinceLastSent >= 2) {
+    if (timeSinceLastSent >= config.getHeartbeatIntervalSeconds()) {
         sendHeartbeat();
     }
 }
@@ -190,7 +214,65 @@ void NetworkSession::disconnect() {
     if (m_socket) {
         m_socket->disconnect();
     }
-    m_status = ConnectionStatus::DISCONNECTED;
+    if (m_status == ConnectionStatus::CONNECTED) {
+        m_status = ConnectionStatus::DISCONNECTING;
+    } else {
+        m_status = ConnectionStatus::DISCONNECTED;
+    }
+}
+
+// Store connection info so we can try to reconnect if connection drops
+void NetworkSession::setReconnectInfo(const std::string& hostAddress, unsigned short port) {
+    m_reconnectHost = hostAddress;
+    m_reconnectPort = port;
+    m_reconnectAttempts = 0;  // Reset attempt counter
+}
+
+// Check if we should try to reconnect (haven't tried too many times, and enough time has passed)
+bool NetworkSession::shouldAttemptReconnect() const {
+    // Need to have a host address and port to reconnect to
+    if (m_reconnectHost.empty() || m_reconnectPort == 0) {
+        return false;
+    }
+    
+    // Don't try more than the maximum number of attempts
+    auto& config = NetworkConfig::getInstance();
+    if (m_reconnectAttempts >= config.getMaxReconnectAttempts()) {
+        return false;
+    }
+    
+    // Wait a bit between reconnection attempts
+    auto now = std::chrono::steady_clock::now();
+    auto timeSinceLastAttempt = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - m_lastReconnectAttempt).count();
+    
+    // Only reconnect if enough time has passed since last attempt
+    return timeSinceLastAttempt >= config.getReconnectDelayMs();
+}
+
+// Try to reconnect to the host
+bool NetworkSession::attemptReconnect(const std::string& hostAddress, unsigned short port, int timeoutMs) {
+    // Check if we should even try
+    if (!shouldAttemptReconnect()) {
+        return false;
+    }
+    
+    // Record that we're trying to reconnect
+    m_lastReconnectAttempt = std::chrono::steady_clock::now();
+    m_reconnectAttempts++;
+    
+    // Try to connect
+    m_status = ConnectionStatus::CONNECTING;
+    m_lastError = "";
+    
+    // If connection succeeds, reset attempt counter
+    if (connectToHost(hostAddress, port, timeoutMs)) {
+        m_reconnectAttempts = 0;
+        return true;
+    }
+    
+    // Connection failed
+    return false;
 }
 
 void NetworkSession::setBlocking(bool blocking) {

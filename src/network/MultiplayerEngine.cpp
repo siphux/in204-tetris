@@ -2,8 +2,11 @@
 #include "NetworkManager.h"
 #include "InternetConnectivity.h"
 #include "../model/LevelBasedMode.h"
+#include "../model/Board.h"
 #include <sstream>
 #include <iostream>
+#include <vector>
+#include <algorithm>
 
 MultiplayerEngine::MultiplayerEngine(const std::string& playerName)
     : m_localPlayerName(playerName),
@@ -20,14 +23,23 @@ MultiplayerEngine::~MultiplayerEngine() {
 }
 
 bool MultiplayerEngine::startHosting(unsigned short port, MultiplayerGameMode mode) {
+    // Create network session if needed
     if (!m_networkSession) {
-        m_networkSession = std::make_unique<NetworkSession>(
+        m_networkSession = std::make_shared<NetworkSession>(
             NetworkSession::SessionRole::HOST, m_localPlayerName);
     }
 
+    // Start hosting
     if (!m_networkSession->startHosting(port)) {
         std::cerr << "Failed to start hosting: " << m_networkSession->getLastError() << std::endl;
         return false;
+    }
+
+    // Create and start network thread
+    if (!m_networkThread) {
+        m_networkThread = std::make_unique<NetworkThread>();
+        m_networkThread->setNetworkSession(m_networkSession);
+        m_networkThread->start();
     }
 
     m_gameMode = mode;
@@ -89,48 +101,77 @@ void MultiplayerEngine::enableScreenShare(bool enabled) {
     m_enableScreenShare = enabled;
 }
 
+// Connect to a host server as a client
 bool MultiplayerEngine::connectToHost(const std::string& serverIP, unsigned short port, MultiplayerGameMode mode) {
+    // Create network session if we don't have one yet
     if (!m_networkSession) {
-        m_networkSession = std::make_unique<NetworkSession>(
+        m_networkSession = std::make_shared<NetworkSession>(
             NetworkSession::SessionRole::CLIENT, m_localPlayerName);
     }
-
+    
+    // Store reconnect info so we can try again if connection drops
+    m_networkSession->setReconnectInfo(serverIP, port);
+    
+    // Try to connect to the server
     if (!m_networkSession->connectToHost(serverIP, port)) {
         std::cerr << "Failed to connect: " << m_networkSession->getLastError() << std::endl;
         return false;
     }
 
+    // Connection successful! Set up the game
     m_gameMode = mode;
     m_remotePlayerName = m_networkSession->getRemotePlayerName();
     m_engineState = EngineState::LOBBY;
-    m_localGameState.reset();
     
+    // Reset both game states
+    m_localGameState.reset();
     m_localGameState.setGameMode(std::make_unique<LevelBasedMode>());
     m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
     
+    // Set up the multiplayer mode (Race or Malus)
     ::MultiplayerGameMode::Mode multiplayerMode = (mode == MultiplayerGameMode::RACE) 
         ? ::MultiplayerGameMode::Mode::RACE 
         : ::MultiplayerGameMode::Mode::MALUS;
     m_multiplayerMode = std::make_unique<::MultiplayerGameMode>(
         multiplayerMode, m_targetLines, m_enableScreenShare);
     
+    // Start the game
     m_engineState = EngineState::GAME_RUNNING;
     
     return true;
 }
 
+// Update multiplayer engine every frame
 void MultiplayerEngine::update(float deltaTime) {
     if (!m_networkSession) return;
 
+    // Update network session (check connection, heartbeat, etc.)
     m_networkSession->update();
 
+    // Check if we're still connected
     if (!m_networkSession->isConnected()) {
-        m_engineState = EngineState::IDLE;
+        // If we're still trying to connect, wait
+        if (m_networkSession->getStatus() == NetworkSession::ConnectionStatus::CONNECTING) {
+            return;
+        }
+        // Connection lost - go back to lobby or idle
+        if (m_engineState == EngineState::GAME_RUNNING) {
+            m_engineState = EngineState::LOBBY;
+        } else {
+            m_engineState = EngineState::IDLE;
+        }
         return;
     }
+    
+    // If we just connected, start the game
+    if (m_engineState == EngineState::IDLE && m_networkSession->isConnected()) {
+        m_engineState = EngineState::GAME_RUNNING;
+    }
 
+    // If we're the host, check for incoming connections
     if (m_networkSession->getRole() == NetworkSession::SessionRole::HOST) {
         if (m_engineState == EngineState::LOBBY && m_networkSession->pollIncomingConnection()) {
+            // Client connected! Start the game
             m_engineState = EngineState::GAME_RUNNING;
         }
     }
@@ -138,6 +179,25 @@ void MultiplayerEngine::update(float deltaTime) {
     processNetworkMessages();
 
     if (m_engineState == EngineState::GAME_RUNNING) {
+        // Check for victory BEFORE updating (so we stop immediately when target is reached)
+        int winner = checkVictory();
+        
+        // If someone won, stop updating and notify the other player
+        if (winner != -1) {
+            // Send GAME_OVER message to notify the other player
+            Message gameOverMsg(MessageType::GAME_OVER);
+            gameOverMsg.setPlayerId(winner);
+            if (m_networkThread && m_networkThread->isRunning()) {
+                m_networkThread->queueSend(gameOverMsg);
+            } else if (m_networkSession && m_networkSession->isConnected()) {
+                auto serialized = gameOverMsg.serialize();
+                m_networkSession->sendPacket(serialized.data(), serialized.size());
+            }
+            // Game state is now GAME_OVER, so updates will stop on next frame
+            return;
+        }
+        
+        // Only update if game is still running (not over)
         m_localGameState.update(deltaTime);
         
         if (m_multiplayerMode) {
@@ -150,8 +210,6 @@ void MultiplayerEngine::update(float deltaTime) {
             sendGameState();
             timeSinceLastUpdate = 0.0f;
         }
-
-        checkVictory();
     }
 }
 
@@ -159,8 +217,23 @@ void MultiplayerEngine::sendInput(InputAction action) {
     if (!m_networkSession || !m_networkSession->isConnected()) {
         return;
     }
+    
+    // Don't accept input if game is over
+    if (m_engineState == EngineState::GAME_OVER) {
+        return;
+    }
 
     applyInputToLocalState(action);
+
+    InputBufferEntry entry;
+    entry.action = action;
+    entry.frameNumber = m_frameNumber;
+    entry.timestamp = 0.0f;
+    
+    m_inputBuffer.push_back(entry);
+    if (m_inputBuffer.size() > MAX_BUFFER_SIZE) {
+        m_inputBuffer.erase(m_inputBuffer.begin());
+    }
 
     MessageType msgType;
     switch (action) {
@@ -182,14 +255,25 @@ void MultiplayerEngine::sendInput(InputAction action) {
     msg.payload() << static_cast<uint8_t>(action);
     msg.payload() << m_frameNumber;
     
-    auto serialized = msg.serialize();
-    m_networkSession->sendPacket(serialized.data(), serialized.size());
+    // Queue message to be sent by network thread (thread-safe)
+    if (m_networkThread && m_networkThread->isRunning()) {
+        m_networkThread->queueSend(msg);
+    } else if (m_networkSession && m_networkSession->isConnected()) {
+        // Fallback to direct send if thread not available
+        auto serialized = msg.serialize();
+        m_networkSession->sendPacket(serialized.data(), serialized.size());
+    }
     
     m_frameNumber++;
 }
 
 void MultiplayerEngine::sendMalus(MalusType malusType, uint32_t durationMs) {
     if (!m_networkSession || !m_networkSession->isConnected()) {
+        return;
+    }
+    
+    // Don't send malus if game is over
+    if (m_engineState == EngineState::GAME_OVER) {
         return;
     }
 
@@ -202,8 +286,14 @@ void MultiplayerEngine::sendMalus(MalusType malusType, uint32_t durationMs) {
     msg.payload() << durationMs;
     msg.payload() << static_cast<uint8_t>(100);
     
-    auto serialized = msg.serialize();
-    m_networkSession->sendPacket(serialized.data(), serialized.size());
+    // Queue message to be sent by network thread (thread-safe)
+    if (m_networkThread && m_networkThread->isRunning()) {
+        m_networkThread->queueSend(msg);
+    } else if (m_networkSession && m_networkSession->isConnected()) {
+        // Fallback to direct send if thread not available
+        auto serialized = msg.serialize();
+        m_networkSession->sendPacket(serialized.data(), serialized.size());
+    }
 }
 
 const Board& MultiplayerEngine::getRemoteBoard() const {
@@ -230,47 +320,111 @@ std::string MultiplayerEngine::getWinnerName() const {
     return "Tie";
 }
 
+// Disconnect from the multiplayer session
 void MultiplayerEngine::disconnect() {
+    // Stop network thread first
+    if (m_networkThread) {
+        m_networkThread->stop();
+        m_networkThread.reset();
+    }
+    
     if (m_networkSession) {
         m_networkSession->disconnect();
     }
+    // Reset to idle state
     m_engineState = EngineState::IDLE;
 }
 
+// Process messages received from the network
 void MultiplayerEngine::processNetworkMessages() {
-    if (!m_networkSession) return;
-
-    uint8_t buffer[1024];
-    size_t received = m_networkSession->receivePacket(buffer, sizeof(buffer));
-    
-    if (received > 0) {
-        try {
-            Message msg = Message::deserialize(buffer, received);
+    // Get messages from network thread (thread-safe)
+    if (m_networkThread && m_networkThread->isRunning()) {
+        // Process all received messages
+        while (m_networkThread->hasReceivedMessages()) {
+            Message msg = m_networkThread->popReceivedMessage();
             
+            // Handle different message types
             switch (msg.getType()) {
+                case MessageType::JOIN:
+                    // Player joined
+                    break;
+                case MessageType::JOIN_ACK:
+                    // Join acknowledged
+                    break;
+                case MessageType::START:
+                    // Game start
+                    if (m_engineState == EngineState::LOBBY) {
+                        m_engineState = EngineState::GAME_RUNNING;
+                    }
+                    break;
                 case MessageType::MOVE:
                 case MessageType::ROTATE:
                 case MessageType::DROP:
+                    // Remote player input
                     handleRemoteInput(msg);
                     break;
-                    
                 case MessageType::GAME_STATE:
+                    // Full game state update
                     handleGameStateUpdate(msg);
                     break;
-                    
                 case MessageType::ATTACK:
+                    // Malus/attack received
                     handleMalusMessage(msg);
                     break;
-                    
                 case MessageType::GAME_OVER:
+                    // Game ended
                     m_engineState = EngineState::GAME_OVER;
                     break;
-                    
-                default:
+                case MessageType::DISCONNECT:
+                    // Player disconnected
+                    disconnect();
+                    break;
+                case MessageType::LINES_CLEARED:
+                    // Lines cleared notification
                     break;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "Error processing message: " << e.what() << std::endl;
+        }
+    } else if (m_networkSession) {
+        // Fallback to direct receive if thread not available
+        uint8_t buffer[1024];
+        size_t received = m_networkSession->receivePacket(buffer, sizeof(buffer));
+        
+        if (received > 0) {
+            try {
+                Message msg = Message::deserialize(buffer, received);
+                
+                // Handle different message types
+                switch (msg.getType()) {
+                    case MessageType::MOVE:
+                    case MessageType::ROTATE:
+                    case MessageType::DROP:
+                        // Remote player made a move - apply it
+                        handleRemoteInput(msg);
+                        break;
+                        
+                    case MessageType::GAME_STATE:
+                        // Remote player sent their game state - update ours
+                        handleGameStateUpdate(msg);
+                        break;
+                        
+                    case MessageType::ATTACK:
+                        // Remote player attacked us with a malus
+                        handleMalusMessage(msg);
+                        break;
+                        
+                    case MessageType::GAME_OVER:
+                        // Game ended
+                        m_engineState = EngineState::GAME_OVER;
+                        break;
+                        
+                    default:
+                        // Unknown message type - ignore it
+                        break;
+                }
+            } catch (const std::exception& e) {
+                // Something went wrong parsing the message
+                std::cerr << "Error processing message: " << e.what() << std::endl;
+            }
         }
     }
 }
@@ -283,8 +437,48 @@ void MultiplayerEngine::sendGameState() {
     Message msg(MessageType::GAME_STATE);
     NetworkManager::serializeGameState(m_localGameState, msg.payload());
     
-    auto serialized = msg.serialize();
-    m_networkSession->sendPacket(serialized.data(), serialized.size());
+    // Queue message to be sent by network thread (thread-safe)
+    if (m_networkThread && m_networkThread->isRunning()) {
+        m_networkThread->queueSend(msg);
+    } else if (m_networkSession && m_networkSession->isConnected()) {
+        // Fallback to direct send if thread not available
+        auto serialized = msg.serialize();
+        m_networkSession->sendPacket(serialized.data(), serialized.size());
+    }
+}
+
+bool MultiplayerEngine::validateInput(InputAction action, const GameState& state) {
+    const Tetromino& piece = state.currentPiece();
+    int baseX = state.pieceX();
+    int baseY = state.pieceY();
+    
+    switch (action) {
+        case InputAction::MOVE_LEFT:
+            for (const auto& offset : piece.getBlocks()) {
+                int x = baseX + offset.x - 1;
+                int y = baseY + offset.y;
+                if (x < 0 || (y >= 1 && y < Board::Height && state.board().getCell(x, y) != 0)) {
+                    return false;
+                }
+            }
+            return true;
+        case InputAction::MOVE_RIGHT:
+            for (const auto& offset : piece.getBlocks()) {
+                int x = baseX + offset.x + 1;
+                int y = baseY + offset.y;
+                if (x >= Board::Width || (y >= 1 && y < Board::Height && state.board().getCell(x, y) != 0)) {
+                    return false;
+                }
+            }
+            return true;
+        case InputAction::ROTATE_CW:
+        case InputAction::ROTATE_CCW:
+        case InputAction::SOFT_DROP:
+        case InputAction::HARD_DROP:
+            return true;
+        default:
+            return false;
+    }
 }
 
 void MultiplayerEngine::handleRemoteInput(const Message& msg) {
@@ -297,6 +491,12 @@ void MultiplayerEngine::handleRemoteInput(const Message& msg) {
     }
     
     InputAction action = static_cast<InputAction>(actionByte);
+    
+    if (m_networkSession->getRole() == NetworkSession::SessionRole::HOST) {
+        if (!validateInput(action, m_remoteGameState)) {
+            return;
+        }
+    }
     
     switch (action) {
         case InputAction::MOVE_LEFT:

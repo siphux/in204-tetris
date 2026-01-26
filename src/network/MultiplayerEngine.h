@@ -2,7 +2,9 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 #include "NetworkSession.h"
+#include "NetworkThread.h"
 #include "Message.h"
 #include "../model/GameState.h"
 #include "../model/MultiplayerMode.h"
@@ -61,11 +63,15 @@ public:
     int checkVictory();
     
     void disconnect();
+    
+    NetworkSession* getNetworkSession() { return m_networkSession.get(); }
+    NetworkThread* getNetworkThread() { return m_networkThread.get(); }
 
 private:
     std::string m_localPlayerName;
     std::string m_remotePlayerName;
-    std::unique_ptr<NetworkSession> m_networkSession;
+    std::shared_ptr<NetworkSession> m_networkSession;  // Changed to shared_ptr for NetworkThread
+    std::unique_ptr<NetworkThread> m_networkThread;   // Network I/O thread
     GameState m_localGameState;
     GameState m_remoteGameState;
     std::unique_ptr<::MultiplayerGameMode> m_multiplayerMode;
@@ -77,6 +83,14 @@ private:
     uint32_t m_frameNumber;
     uint8_t m_receiveBuffer[1024];
     
+    struct InputBufferEntry {
+        InputAction action;
+        uint32_t frameNumber;
+        float timestamp;
+    };
+    std::vector<InputBufferEntry> m_inputBuffer;
+    static constexpr size_t MAX_BUFFER_SIZE = 10;
+    
     void processNetworkMessages();
     void sendGameState();
     void broadcastGameState();
@@ -85,4 +99,5 @@ private:
     void handleMalusMessage(const Message& msg);
     void applyRemoteGameState(const GameState& remote);
     void applyInputToLocalState(InputAction action);
+    bool validateInput(InputAction action, const GameState& state);
 };

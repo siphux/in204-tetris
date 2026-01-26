@@ -29,7 +29,7 @@ public:
     std::string getLocalIP() const;
     bool pollIncomingConnection();
 
-    bool connectToHost(const std::string& hostAddress, unsigned short port, int timeoutMs = 5000);
+    bool connectToHost(const std::string& hostAddress, unsigned short port, int timeoutMs = -1);
 
     bool sendPacket(const uint8_t* data, size_t size);
     size_t receivePacket(uint8_t* outData, size_t maxSize);
@@ -46,6 +46,10 @@ public:
     void setBlocking(bool blocking);
     SessionRole getRole() const { return m_role; }
     std::string getLastError() const { return m_lastError; }
+    
+    bool attemptReconnect(const std::string& hostAddress, unsigned short port, int timeoutMs = 15000);
+    void setReconnectInfo(const std::string& hostAddress, unsigned short port);
+    bool shouldAttemptReconnect() const;
 
 private:
     SessionRole m_role;
@@ -61,6 +65,13 @@ private:
     std::chrono::steady_clock::time_point m_lastHeartbeatSent;
     std::chrono::steady_clock::time_point m_lastHeartbeatReceived;
     std::chrono::steady_clock::time_point m_connectionStartTime;
+    
+    std::string m_reconnectHost;
+    unsigned short m_reconnectPort;
+    std::chrono::steady_clock::time_point m_lastReconnectAttempt;
+    static constexpr int RECONNECT_DELAY_MS = 3000;
+    int m_reconnectAttempts;
+    static constexpr int MAX_RECONNECT_ATTEMPTS = 5;
 
     void updateConnectionTimeout();
     void updateHeartbeat();

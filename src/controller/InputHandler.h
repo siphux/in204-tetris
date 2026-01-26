@@ -29,6 +29,12 @@ public:
     
     // Reset hard drop flag
     void resetHardDropFlag();
+    
+    // Check if a key was just pressed (for immediate processing of first press)
+    bool wasKeyJustPressed(sf::Keyboard::Key key) const;
+    
+    // Mark a key as processed (call after handling immediate press)
+    void markKeyProcessed(sf::Keyboard::Key key);
 
 private:
     bool m_leftPressed;
@@ -37,4 +43,9 @@ private:
     bool m_rotateClockwisePressed;
     bool m_rotateCounterClockwisePressed;
     bool m_hardDropPressed;
+    
+    // Track keys that were just pressed (for immediate processing)
+    bool m_leftJustPressed;
+    bool m_rightJustPressed;
+    bool m_downJustPressed;
 };

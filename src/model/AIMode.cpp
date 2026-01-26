@@ -8,7 +8,8 @@ AIMode::AIMode(bool useAdvanced)
       m_ai(useAdvanced ? static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<AdvancedAI>()) 
                         : static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<SimpleAI>())),
       m_moveTimer(0.0f),
-      m_linesCleared(0) {}
+      m_level(),
+      m_totalLinesCleared(0) {}
 
 void AIMode::update(float deltaTime, GameState& gameState) {
     // Don't make moves during line clearing animation or if game is over
@@ -50,16 +51,23 @@ void AIMode::update(float deltaTime, GameState& gameState) {
 }
 
 float AIMode::getFallSpeed() const {
-    return BASE_SPEED;
+    int level = m_level.current();
+    float speed = BASE_SPEED - (SPEED_MULTIPLIER * level);
+    // Ensure minimum speed
+    return speed > 0.05f ? speed : 0.05f;
 }
 
 void AIMode::onLinesClear(int linesCleared, GameState& gameState) {
-    m_linesCleared += linesCleared;
+    // Add cleared lines to level tracker
+    m_level.addLines(linesCleared);
+    // Track total lines cleared
+    m_totalLinesCleared += linesCleared;
 }
 
 void AIMode::reset() {
     m_moveTimer = 0.0f;
-    m_linesCleared = 0;
+    m_level = Level();
+    m_totalLinesCleared = 0;
     // Preserve the AI type choice when resetting
     m_ai = m_useAdvanced ? static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<AdvancedAI>()) 
                          : static_cast<std::unique_ptr<AIPlayer>>(std::make_unique<SimpleAI>());
@@ -70,5 +78,9 @@ const char* AIMode::getModeName() const {
 }
 
 int AIMode::getLinesCleared() const {
-    return m_linesCleared;
+    return m_totalLinesCleared;
+}
+
+int AIMode::getCurrentLevel() const {
+    return m_level.current();
 }

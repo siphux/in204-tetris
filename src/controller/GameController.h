@@ -2,6 +2,7 @@
 #include "../model/GameState.h"
 #include "InputHandler.h"
 #include "../view/MenuView.h"
+#include "../ai/AIPlayer.h"
 #include <SFML/Window/Event.hpp>
 #include <memory>
 
@@ -62,6 +63,21 @@ public:
     
     // Get server's public IP address (for internet play)
     std::string getServerPublicIP() const;
+    
+    // Get last connection error message
+    std::string getLastConnectionError() const;
+    
+    // Get network latency (for multiplayer)
+    uint32_t getNetworkLatency() const;
+    
+    // Get remote player name (for multiplayer)
+    std::string getRemotePlayerName() const;
+    
+    // AI vs AI and Player vs AI support
+    void setLocalPlayerAI(bool enabled, bool useAdvanced = true);
+    bool isLocalPlayerAI() const { return m_localPlayerAI; }
+    void setRemotePlayerAI(bool enabled, bool useAdvanced = true);
+    bool isRemotePlayerAI() const { return m_remotePlayerAI; }
 
 private:
     GameState m_gameState;
@@ -77,12 +93,29 @@ private:
     bool m_isHosting;  // true = server, false = client or solo
     std::string m_serverIPInput;  // For IP input in ENTER_IP menu
     
+    // AI for multiplayer and local modes
+    bool m_localPlayerAI;
+    bool m_localPlayerAIAdvanced;
+    bool m_remotePlayerAI;
+    bool m_remotePlayerAIAdvanced;
+    bool m_localAIMode;  // Local AI vs AI mode (no network)
+    float m_aiMoveTimer;
+    float m_remoteAIMoveTimer;
+    std::unique_ptr<AIPlayer> m_aiPlayer;
+    std::unique_ptr<AIPlayer> m_remoteAIPlayer;
+    
     // Input timing for movement (to prevent too-fast movement)
     float m_inputTimer;
-    static constexpr float INPUT_DELAY = 0.1f; // 100ms delay between moves
+    float m_multiplayerInputTimer;  // Separate timer for multiplayer input throttling
+    static constexpr float INPUT_DELAY = 0.1f; // 100ms delay between moves (same for single and multiplayer)
     
     // Process continuous input (movement keys)
     void processContinuousInput();
+    
+    // Helper functions for local AI mode
+    void updateLocalPlayerInAIMode(float deltaTime);
+    void updateRemotePlayerInAIMode(float deltaTime);
+    void makeAIMove(GameState& gameState, AIPlayer* aiPlayer, float& moveTimer);
     
     // Process discrete input (rotation)
     void processDiscreteInput();
