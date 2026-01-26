@@ -40,10 +40,12 @@ bool NetworkSession::startHosting(unsigned short port) {
 
     if (m_listener->listen(port) != sf::Socket::Status::Done) {
         m_lastError = "Failed to bind listening port";
+        std::cerr << "[HOST] Failed to bind port " << port << ": " << m_lastError << std::endl;
         return false;
     }
 
     m_status = ConnectionStatus::CONNECTING;
+    std::cerr << "[HOST] Listening on port " << port << " (Local IP: " << getLocalIP() << ")" << std::endl;
     return true;
 }
 
@@ -66,11 +68,20 @@ bool NetworkSession::pollIncomingConnection() {
     m_socket = std::make_unique<sf::TcpSocket>();
     m_socket->setBlocking(false);
 
-    if (m_listener->accept(*m_socket) == sf::Socket::Status::Done) {
+    sf::Socket::Status status = m_listener->accept(*m_socket);
+    if (status == sf::Socket::Status::Done) {
         m_status = ConnectionStatus::CONNECTED;
         m_connectionStartTime = std::chrono::steady_clock::now();
         m_lastHeartbeatReceived = m_connectionStartTime;
+        std::cerr << "[HOST] Client connected from " << m_socket->getRemoteAddress().value().toString() << std::endl;
         return true;
+    } else if (status == sf::Socket::Status::Error) {
+        // Only log errors, not "NotReady" status (which is normal when no connection pending)
+        static bool errorLogged = false;
+        if (!errorLogged) {
+            std::cerr << "[HOST] Error accepting connection" << std::endl;
+            errorLogged = true;
+        }
     }
 
     return false;
@@ -86,15 +97,18 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
         timeoutMs = NetworkConfig::getInstance().getConnectionTimeoutMs();
     }
 
+    std::cerr << "[CLIENT] Attempting to connect to " << hostAddress << ":" << port << "..." << std::endl;
     m_socket = std::make_unique<sf::TcpSocket>();
     
     auto ipAddressOpt = sf::IpAddress::resolve(hostAddress);
     if (!ipAddressOpt.has_value()) {
         m_lastError = "Failed to resolve host address: " + hostAddress;
         m_status = ConnectionStatus::ERROR;
+        std::cerr << "[CLIENT] Failed to resolve IP address: " << hostAddress << std::endl;
         return false;
     }
     sf::IpAddress ipAddress = ipAddressOpt.value();
+    std::cerr << "[CLIENT] Resolved to IP: " << ipAddress.toString() << std::endl;
     
     auto startTime = std::chrono::steady_clock::now();
     
@@ -107,6 +121,7 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
             m_connectionStartTime = std::chrono::steady_clock::now();
             m_lastHeartbeatReceived = m_connectionStartTime;
             m_reconnectAttempts = 0;
+            std::cerr << "[CLIENT] Successfully connected to host!" << std::endl;
             return true;
         }
         
@@ -114,6 +129,7 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
             m_lastError = "Failed to connect to host: " + hostAddress + ":" + std::to_string(port) + 
                          " (Check firewall/port forwarding)";
             m_status = ConnectionStatus::ERROR;
+            std::cerr << "[CLIENT] Connection error: " << m_lastError << std::endl;
             return false;
         }
         
@@ -124,6 +140,7 @@ bool NetworkSession::connectToHost(const std::string& hostAddress, unsigned shor
                          " seconds. Check:\n- IP address is correct\n- Port " + std::to_string(port) + 
                          " is forwarded on host's router\n- Firewall allows connections";
             m_status = ConnectionStatus::ERROR;
+            std::cerr << "[CLIENT] " << m_lastError << std::endl;
             return false;
         }
         

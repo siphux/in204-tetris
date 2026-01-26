@@ -31,9 +31,10 @@ bool MultiplayerEngine::startHosting(unsigned short port, MultiplayerGameMode mo
 
     // Start hosting
     if (!m_networkSession->startHosting(port)) {
-        std::cerr << "Failed to start hosting: " << m_networkSession->getLastError() << std::endl;
+        std::cerr << "[HOST] Failed to start hosting: " << m_networkSession->getLastError() << std::endl;
         return false;
     }
+    std::cerr << "[HOST] Server started successfully. Waiting for client..." << std::endl;
 
     // Create and start network thread
     if (!m_networkThread) {
@@ -172,6 +173,7 @@ void MultiplayerEngine::update(float deltaTime) {
     if (m_networkSession->getRole() == NetworkSession::SessionRole::HOST) {
         if (m_engineState == EngineState::LOBBY && m_networkSession->pollIncomingConnection()) {
             // Client connected! Start the game
+            std::cerr << "[HOST] Client connected! Starting game..." << std::endl;
             m_engineState = EngineState::GAME_RUNNING;
         }
     }
