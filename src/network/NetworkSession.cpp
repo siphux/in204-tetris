@@ -340,10 +340,12 @@ std::string NetworkSession::getSystemLocalIP() const {
                 if (sscanf(line, "nameserver %s", ip) == 1) {
                     const std::string candidate(ip);
                     const bool isLoopback = (candidate == "127.0.0.1" || candidate == "127.0.0.53");
-                    const bool isPrivate = (candidate.rfind("192.168.", 0) == 0) || (candidate.rfind("10.", 0) == 0);
-                    if (!isLoopback && isPrivate) {
+                    const bool isPrivate10 = candidate.rfind("10.", 0) == 0;
+                    const bool isPrivate192 = candidate.rfind("192.168.", 0) == 0;
+                    const bool isPrivate172 = candidate.rfind("172.", 0) == 0;
+                    if (!isLoopback && (isPrivate10 || isPrivate192 || isPrivate172)) {
                         wslHostIP = candidate;
-                        std::cerr << "[HOST] WSL2 nameserver (Windows Wi-Fi/Ethernet) IP: " << wslHostIP << std::endl;
+                        std::cerr << "[HOST] WSL2 nameserver candidate IP: " << wslHostIP << std::endl;
                         break;
                     }
                 }
@@ -353,24 +355,24 @@ std::string NetworkSession::getSystemLocalIP() const {
     }
     
     // Try using SFML's getLocalAddress() which should get the right interface
+    // Collect best candidates with priority: 10.* > 192.168.* > 172.16-31.* > anything non-loopback
+    std::string best10 = "";
+    std::string best192 = "";
+    std::string best172 = "";
+    std::string bestNonLoop = "";
+
     auto localAddr = sf::IpAddress::getLocalAddress();
     if (localAddr.has_value()) {
         std::string ip = localAddr->toString();
-        // Prefer nameserver-derived Windows IP only when it's a private LAN address
-        if (!wslHostIP.empty()) {
-            std::cerr << "[HOST] WSL2 detected - prefer Windows host IP: " << wslHostIP << " (SFML local: " << ip << ")" << std::endl;
-            return wslHostIP;
-        }
-        // Skip loopback and WSL2 virtual network IPs (172.18-31.x.x range)
-        if (ip.rfind("127.", 0) != 0 &&
-            ip.find("172.18.") != 0 && ip.find("172.19.") != 0 && 
-            ip.find("172.20.") != 0 && ip.find("172.21.") != 0 &&
-            ip.find("172.22.") != 0 && ip.find("172.23.") != 0 &&
-            ip.find("172.24.") != 0 && ip.find("172.25.") != 0 &&
-            ip.find("172.26.") != 0 && ip.find("172.27.") != 0 &&
-            ip.find("172.28.") != 0 && ip.find("172.29.") != 0 &&
-            ip.find("172.30.") != 0 && ip.find("172.31.") != 0) {
-            return ip;
+        const bool isLoopback = ip.rfind("127.", 0) == 0;
+        const bool is10 = ip.rfind("10.", 0) == 0;
+        const bool is192 = ip.rfind("192.168.", 0) == 0;
+        const bool is172 = ip.rfind("172.", 0) == 0;
+        if (!isLoopback) {
+            if (is10) best10 = ip;
+            else if (is192) best192 = ip;
+            else if (is172) best172 = ip;
+            else bestNonLoop = ip;
         }
     }
     
@@ -404,16 +406,15 @@ std::string NetworkSession::getSystemLocalIP() const {
                 std::string ipStr = std::string(ip);
                 // Prefer 192.168.x.x or 10.x.x.x (typical local network)
                 // Accept 172.16-31.x.x (private), skip 127.* and 172.18-31 WSL NAT only if no better option
-                const bool isPrivateA = ipStr.rfind("10.", 0) == 0;
-                const bool isPrivateB = ipStr.rfind("192.168.", 0) == 0;
-                const bool isPrivateC = ipStr.rfind("172.", 0) == 0 && ipStr.size() > 6 && std::stoi(ipStr.substr(4, 2)) >= 16 && std::stoi(ipStr.substr(4, 2)) <= 31;
+                const bool is10 = ipStr.rfind("10.", 0) == 0;
+                const bool is192 = ipStr.rfind("192.168.", 0) == 0;
+                const bool is172 = ipStr.rfind("172.", 0) == 0 && ipStr.size() > 6 && std::stoi(ipStr.substr(4, 2)) >= 16 && std::stoi(ipStr.substr(4, 2)) <= 31;
                 const bool isLoopbackIp = ipStr.rfind("127.", 0) == 0;
-                if (!isLoopbackIp && (isPrivateA || isPrivateB || isPrivateC)) {
-                    result = ipStr;
-                    break;
-                } else if (result == "127.0.0.1" && !isLoopbackIp) {
-                    // Use as fallback if nothing better yet
-                    result = ipStr;
+                if (!isLoopbackIp) {
+                    if (is10 && best10.empty()) best10 = ipStr;
+                    else if (is192 && best192.empty()) best192 = ipStr;
+                    else if (is172 && best172.empty()) best172 = ipStr;
+                    if (bestNonLoop.empty()) bestNonLoop = ipStr;
                 }
             }
         }
@@ -423,11 +424,15 @@ std::string NetworkSession::getSystemLocalIP() const {
         freeifaddrs(ifaddr);
     }
 
-    // If we found a private Windows host IP, prefer it over WSL NAT addresses or loopback
+    // Choose best candidate: resolv (private) > 10.* > 192.168.* > 172.16-31.* > any non-loopback > result fallback
     if (!wslHostIP.empty()) {
         std::cerr << "[HOST] Using Windows host IP for WSL2: " << wslHostIP << std::endl;
         return wslHostIP;
     }
+    if (!best10.empty()) return best10;
+    if (!best192.empty()) return best192;
+    if (!best172.empty()) return best172;
+    if (!bestNonLoop.empty()) return bestNonLoop;
 
     // Never return loopback unless absolutely nothing else is available
     if (result.rfind("127.", 0) == 0) {
