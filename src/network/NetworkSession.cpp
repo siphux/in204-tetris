@@ -1,6 +1,8 @@
 #include "NetworkSession.h"
 #include "NetworkConfig.h"
+#include <SFML/Network/IpAddress.hpp>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -38,14 +40,18 @@ bool NetworkSession::startHosting(unsigned short port) {
     m_listener = std::make_unique<sf::TcpListener>();
     m_listener->setBlocking(false);
 
-    if (m_listener->listen(port) != sf::Socket::Status::Done) {
+    // Bind to 0.0.0.0 (all interfaces) so it works in WSL2
+    // This allows connections from both WSL2 network and Windows host network
+    if (m_listener->listen(port, sf::IpAddress::Any) != sf::Socket::Status::Done) {
         m_lastError = "Failed to bind listening port";
         std::cerr << "[HOST] Failed to bind port " << port << ": " << m_lastError << std::endl;
         return false;
     }
 
     m_status = ConnectionStatus::CONNECTING;
-    std::cerr << "[HOST] Listening on port " << port << " (Local IP: " << getLocalIP() << ")" << std::endl;
+    std::string displayIP = getLocalIP();
+    std::cerr << "[HOST] Listening on port " << port << " (Local IP: " << displayIP << ")" << std::endl;
+    std::cerr << "[HOST] Server started successfully. Waiting for client..." << std::endl;
     return true;
 }
 
@@ -314,8 +320,56 @@ std::string NetworkSession::getSystemLocalIP() const {
     }
     return "127.0.0.1";
 #else
+    // Check if we're in WSL2 - get Windows host IP from /etc/resolv.conf
+    // WSL2 stores the Windows host IP as the nameserver
+    FILE* resolv = fopen("/etc/resolv.conf", "r");
+    std::string wslHostIP = "";
+    if (resolv) {
+        char line[256];
+        while (fgets(line, sizeof(line), resolv)) {
+            if (strncmp(line, "nameserver", 10) == 0) {
+                char ip[INET_ADDRSTRLEN];
+                if (sscanf(line, "nameserver %s", ip) == 1) {
+                    // Check if it's a valid IP (not 127.0.0.1 or 127.0.0.53)
+                    if (strcmp(ip, "127.0.0.1") != 0 && strcmp(ip, "127.0.0.53") != 0) {
+                        wslHostIP = std::string(ip);
+                        std::cerr << "[HOST] Detected WSL2 - Windows host IP: " << wslHostIP << std::endl;
+                        break;
+                    }
+                }
+            }
+        }
+        fclose(resolv);
+    }
+    
+    // Try using SFML's getLocalAddress() which should get the right interface
+    auto localAddr = sf::IpAddress::getLocalAddress();
+    if (localAddr.has_value()) {
+        std::string ip = localAddr->toString();
+        // If we're in WSL2 and got a Windows host IP, prefer that
+        if (!wslHostIP.empty()) {
+            std::cerr << "[HOST] WSL2 detected - use Windows host IP: " << wslHostIP << " (not WSL2 IP: " << ip << ")" << std::endl;
+            return wslHostIP;
+        }
+        // Skip WSL2 virtual network IPs (172.18-31.x.x range)
+        if (ip.find("172.18.") != 0 && ip.find("172.19.") != 0 && 
+            ip.find("172.20.") != 0 && ip.find("172.21.") != 0 &&
+            ip.find("172.22.") != 0 && ip.find("172.23.") != 0 &&
+            ip.find("172.24.") != 0 && ip.find("172.25.") != 0 &&
+            ip.find("172.26.") != 0 && ip.find("172.27.") != 0 &&
+            ip.find("172.28.") != 0 && ip.find("172.29.") != 0 &&
+            ip.find("172.30.") != 0 && ip.find("172.31.") != 0) {
+            return ip;
+        }
+    }
+    
+    // Fallback: iterate through interfaces and find non-WSL2, non-loopback IP
     struct ifaddrs* ifaddr = nullptr;
     if (getifaddrs(&ifaddr) == -1) {
+        // If we have WSL2 host IP, use it
+        if (!wslHostIP.empty()) {
+            return wslHostIP;
+        }
         return "127.0.0.1";
     }
 
@@ -324,18 +378,34 @@ std::string NetworkSession::getSystemLocalIP() const {
         if (ifa->ifa_addr == nullptr) continue;
 
         if (ifa->ifa_addr->sa_family == AF_INET) {
-            if (std::string(ifa->ifa_name) != "lo") {
+            std::string ifName = ifa->ifa_name;
+            // Skip loopback and WSL interfaces
+            if (ifName != "lo" && ifName.find("eth") != 0 && ifName.find("wsl") == std::string::npos) {
                 char ip[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr,
                          ip, INET_ADDRSTRLEN);
-                result = std::string(ip);
-                break;
+                std::string ipStr = std::string(ip);
+                // Prefer 192.168.x.x or 10.x.x.x (typical local network)
+                // Skip 172.18-31.x.x (WSL2 range)
+                if (ipStr.find("192.168.") == 0 || ipStr.find("10.") == 0) {
+                    result = ipStr;
+                    break;
+                } else if (result == "127.0.0.1" && ipStr.find("172.18.") != 0) {
+                    // Use as fallback if not WSL2 IP
+                    result = ipStr;
+                }
             }
         }
     }
 
     if (ifaddr) {
         freeifaddrs(ifaddr);
+    }
+
+    // If we're in WSL2 and found Windows host IP, use it instead
+    if (!wslHostIP.empty() && result.find("172.18.") == 0) {
+        std::cerr << "[HOST] Using Windows host IP for WSL2: " << wslHostIP << std::endl;
+        return wslHostIP;
     }
 
     return result;
