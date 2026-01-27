@@ -391,6 +391,31 @@ void GameController::update(float deltaTime) {
         // Update local game state
         m_gameState.update(deltaTime);
         
+        // Handle local player input (same flow as solo mode)
+        if (!m_gameState.isGameOver()) {
+            if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Left)) {
+                m_gameState.moveLeft();
+                m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Left);
+                m_inputTimer = 0.0f;
+            } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Right)) {
+                m_gameState.moveRight();
+                m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Right);
+                m_inputTimer = 0.0f;
+            } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Down)) {
+                m_gameState.softDrop();
+                m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Down);
+                m_inputTimer = 0.0f;
+            }
+
+            m_inputTimer += deltaTime;
+            if (m_inputTimer >= INPUT_DELAY) {
+                m_inputTimer = 0.0f;
+                processContinuousInput();
+            }
+
+            processDiscreteInput();
+        }
+        
         // Network sync timer
         m_networkUpdateTimer += deltaTime;
         if (m_networkUpdateTimer >= NETWORK_UPDATE_INTERVAL) {
