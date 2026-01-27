@@ -1,103 +1,171 @@
 #include "NetworkManager.h"
-#include "../model/GameState.h"
-#include "../model/Board.h"
-#include "../model/Tetromino.h"
 #include <cstring>
+#include <iostream>
 
-void NetworkManager::serializeBoard(const Board& board, sf::Packet& packet) {
-    for (int y = 0; y < Board::Height; y++) {
-        for (int x = 0; x < Board::Width; x++) {
-            int cellValue = board.getCell(x, y);
-            packet << cellValue;
+NetworkManager::NetworkManager() 
+    : m_isHost(false), m_isConnected(false) {
+}
+
+NetworkManager::~NetworkManager() {
+    disconnect();
+}
+
+bool NetworkManager::host(unsigned short port) {
+    disconnect();
+    
+    m_isHost = true;
+    
+    // Set listener to non-blocking so it doesn't freeze the game
+    m_listener.setBlocking(false);
+    
+    if (m_listener.listen(port) != sf::Socket::Status::Done) {
+        std::cerr << "Failed to bind to port " << port << std::endl;
+        m_isHost = false;
+        return false;
+    }
+    
+    std::cout << "Hosting on port " << port << std::endl;
+    std::cout << "Waiting for opponent to connect..." << std::endl;
+    return true;
+}
+
+bool NetworkManager::connect(const std::string& ip, unsigned short port) {
+    disconnect();
+    
+    m_isHost = false;
+    
+    // Try to connect (blocking for initial connection is okay)
+    m_serverSocket.setBlocking(true);
+    auto ipAddr = sf::IpAddress::resolve(ip);
+    if (!ipAddr.has_value()) {
+        std::cerr << "Failed to resolve IP address: " << ip << std::endl;
+        return false;
+    }
+    
+    auto status = m_serverSocket.connect(ipAddr.value(), port, sf::seconds(5));
+    
+    if (status != sf::Socket::Status::Done) {
+        std::cerr << "Failed to connect to " << ip << ":" << port << std::endl;
+        return false;
+    }
+    
+    // Switch to non-blocking for game loop
+    m_serverSocket.setBlocking(false);
+    m_isConnected = true;
+    
+    std::cout << "Connected to " << ip << ":" << port << std::endl;
+    return true;
+}
+
+void NetworkManager::disconnect() {
+    if (m_isHost) {
+        m_listener.close();
+        m_clientSocket.disconnect();
+    } else {
+        m_serverSocket.disconnect();
+    }
+    
+    m_isConnected = false;
+    m_isHost = false;
+}
+
+bool NetworkManager::isConnected() const {
+    return m_isConnected;
+}
+
+void NetworkManager::update() {
+    // If we're hosting and not yet connected, try to accept a connection
+    if (m_isHost && !m_isConnected) {
+        auto status = m_listener.accept(m_clientSocket);
+        
+        if (status == sf::Socket::Status::Done) {
+            m_clientSocket.setBlocking(false);
+            m_isConnected = true;
+            std::cout << "Client connected!" << std::endl;
+        }
+        // Status::NotReady means no connection yet (non-blocking)
+    }
+}
+
+sf::TcpSocket* NetworkManager::getActiveSocket() {
+    if (m_isHost) {
+        return &m_clientSocket;
+    } else {
+        return &m_serverSocket;
+    }
+}
+
+bool NetworkManager::sendGameState(const PacketData& data) {
+    if (!m_isConnected) {
+        return false;
+    }
+    
+    sf::Packet packet;
+    
+    // Serialize the PacketData
+    for (int y = 0; y < 21; y++) {
+        for (int x = 0; x < 10; x++) {
+            packet << data.grid[y][x];
         }
     }
+    
+    packet << data.currentPieceType;
+    packet << data.currentPieceX;
+    packet << data.currentPieceY;
+    packet << data.currentPieceRotation;
+    packet << data.score;
+    packet << data.level;
+    packet << data.isGameOver;
+    
+    auto status = getActiveSocket()->send(packet);
+    
+    return status == sf::Socket::Status::Done;
 }
 
-void NetworkManager::deserializeBoard(Board& board, sf::Packet& packet) {
-    board.clear();
+std::optional<PacketData> NetworkManager::receiveOpponentState() {
+    if (!m_isConnected) {
+        return std::nullopt;
+    }
     
-    for (int y = 0; y < Board::Height; y++) {
-        for (int x = 0; x < Board::Width; x++) {
-            int cellValue;
-            packet >> cellValue;
-            board.setCell(x, y, cellValue);
+    sf::Packet packet;
+    auto status = getActiveSocket()->receive(packet);
+    
+    // NotReady means no data available (non-blocking)
+    if (status == sf::Socket::Status::NotReady) {
+        return std::nullopt;
+    }
+    
+    if (status != sf::Socket::Status::Done) {
+        // Connection lost
+        std::cerr << "Connection lost!" << std::endl;
+        m_isConnected = false;
+        return std::nullopt;
+    }
+    
+    // Deserialize
+    PacketData data;
+    
+    for (int y = 0; y < 21; y++) {
+        for (int x = 0; x < 10; x++) {
+            packet >> data.grid[y][x];
         }
     }
-}
-
-void NetworkManager::serializeTetromino(const Tetromino& tetro, sf::Packet& packet) {
-    packet << tetrominoTypeToInt(tetro.getType());
-    packet << rotationStateToInt(tetro.getRotationState());
-}
-
-void NetworkManager::deserializeTetromino(Tetromino& tetro, sf::Packet& packet) {
-    int typeInt;
-    packet >> typeInt;
-    TetrominoType type = intToTetrominoType(typeInt);
     
-    int rotInt;
-    packet >> rotInt;
-    RotationState rot = intToRotationState(rotInt);
+    packet >> data.currentPieceType;
+    packet >> data.currentPieceX;
+    packet >> data.currentPieceY;
+    packet >> data.currentPieceRotation;
+    packet >> data.score;
+    packet >> data.level;
+    packet >> data.isGameOver;
     
-    tetro = Tetromino(type);
-    tetro.setRotationState(rot);
+    return data;
 }
 
-void NetworkManager::serializeGameState(const GameState& state, sf::Packet& packet) {
-    serializeBoard(state.board(), packet);
-    serializeTetromino(state.currentPiece(), packet);
-    packet << state.pieceX() << state.pieceY();
-    serializeTetromino(state.nextPiece(), packet);
-    packet << state.score();
-    packet << state.level();
-    int linesCleared = 0;
-    if (state.getGameMode()) {
-        linesCleared = state.getGameMode()->getLinesCleared();
+std::string NetworkManager::getLocalIP() {
+    auto localAddr = sf::IpAddress::getLocalAddress();
+    if (localAddr.has_value()) {
+        return localAddr.value().toString();
     }
-    packet << linesCleared;
-    packet << (state.isGameOver() ? 1 : 0);
-}
-
-SerializedGameState NetworkManager::deserializeGameState(sf::Packet& packet) {
-    SerializedGameState serialized;
-    
-    deserializeBoard(serialized.board, packet);
-    
-    int currentTypeInt, currentRotInt;
-    packet >> currentTypeInt >> currentRotInt;
-    serialized.currentPieceType = intToTetrominoType(currentTypeInt);
-    serialized.currentPieceRotation = intToRotationState(currentRotInt);
-    
-    packet >> serialized.pieceX >> serialized.pieceY;
-    
-    int nextTypeInt, nextRotInt;
-    packet >> nextTypeInt >> nextRotInt;
-    serialized.nextPieceType = intToTetrominoType(nextTypeInt);
-    serialized.nextPieceRotation = intToRotationState(nextRotInt);
-    
-    int gameOverInt;
-    packet >> serialized.score >> serialized.level >> serialized.linesCleared >> gameOverInt;
-    serialized.gameOver = (gameOverInt == 1);
-    
-    return serialized;
-}
-
-void NetworkManager::applySerializedState(GameState& state, const SerializedGameState& serialized) {
-    state.syncBoard(serialized.board);
-}
-
-int NetworkManager::tetrominoTypeToInt(TetrominoType type) {
-    return static_cast<int>(type);
-}
-
-TetrominoType NetworkManager::intToTetrominoType(int value) {
-    return static_cast<TetrominoType>(value);
-}
-
-int NetworkManager::rotationStateToInt(RotationState state) {
-    return static_cast<int>(state);
-}
-
-RotationState NetworkManager::intToRotationState(int value) {
-    return static_cast<RotationState>(value);
+    return "127.0.0.1";  // Fallback to localhost
 }

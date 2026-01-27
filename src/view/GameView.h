@@ -12,16 +12,16 @@ public:
     // Render the entire game scene (game or menu)
     void render(sf::RenderWindow& window, const GameState& state, 
                const MenuView& menuView, MenuState menuState, int selectedOption,
-               bool isHosting = false, bool isClientConnected = false,
-               const std::string& ipInput = "", const std::string& serverLocalIP = "",
-               const std::string& serverPublicIP = "", bool isNetworkMode = false,
-               const std::string& connectionError = "",
-               const GameState* remoteState = nullptr, uint32_t latency = 0);
+               bool isMultiplayer = false, const GameState* remoteState = nullptr,
+               int winnerId = -1, const std::string& winnerName = "",
+               bool isNetworkConnected = false, const std::string& localIP = "");
 
     // Render just the game (without menu overlay)
     void renderGame(sf::RenderWindow& window, const GameState& state, 
-                   bool isMultiplayer = false, const GameState* remoteState = nullptr,
-                   bool isConnected = false, uint32_t latency = 0);
+                   bool isMultiplayer = false, const GameState* remoteState = nullptr);
+    
+    // Set IP input for JOIN_GAME menu
+    void setIPInput(const std::string& ipInput) { m_ipInput = ipInput; }
 
 private:
     static constexpr int CellSize = 30;
@@ -30,6 +30,7 @@ private:
 
     sf::Font m_font;
     bool m_fontLoaded;
+    std::string m_ipInput;  // For JOIN_GAME menu
 
     sf::Color colorForId(int colorId) const;
 
@@ -42,5 +43,4 @@ private:
     void drawUI(sf::RenderWindow& window, const GameState& state, 
                 float offsetX = 0.0f, const std::string& playerLabel = "");
     void drawGameOverScreen(sf::RenderWindow& window, int finalScore);
-    void drawConnectionStatus(sf::RenderWindow& window, bool isConnected, uint32_t latency);
 };

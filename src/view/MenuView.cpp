@@ -75,15 +75,44 @@ void MenuView::renderMultiplayerMenu(sf::RenderWindow& window, int selectedOptio
     drawCenteredText(window, "Multiplayer", 100.0f, TITLE_SIZE, sf::Color::White);
 
     // Draw options
-    drawMenuOption(window, "Host Game", 250.0f, selectedOption == 0);
-    drawMenuOption(window, "Join Game", 250.0f + OPTION_SPACING, selectedOption == 1);
-    drawMenuOption(window, "AI vs AI (Local)", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
-    drawMenuOption(window, "Player vs AI", 250.0f + 3 * OPTION_SPACING, selectedOption == 3);
-    drawMenuOption(window, "Back", 250.0f + 4 * OPTION_SPACING, selectedOption == 4);
+    drawMenuOption(window, "Local Multiplayer", 250.0f, selectedOption == 0);
+    drawMenuOption(window, "LAN Multiplayer", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
 }
 
-void MenuView::renderHostGame(sf::RenderWindow& window, bool isConnected, 
-                             const std::string& localIP, const std::string& publicIP, int selectedOption) const {
+void MenuView::renderLocalMultiplayerMenu(sf::RenderWindow& window, int selectedOption) const {
+    // Draw background
+    sf::RectangleShape background({static_cast<float>(window.getSize().x),
+                                  static_cast<float>(window.getSize().y)});
+    background.setFillColor(sf::Color::Black);
+    window.draw(background);
+
+    // Draw title
+    drawCenteredText(window, "Local Multiplayer", 100.0f, TITLE_SIZE, sf::Color::White);
+
+    // Draw options
+    drawMenuOption(window, "AI vs AI", 250.0f, selectedOption == 0);
+    drawMenuOption(window, "Player vs AI", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+}
+
+void MenuView::renderLANMultiplayerMenu(sf::RenderWindow& window, int selectedOption) const {
+    // Draw background
+    sf::RectangleShape background({static_cast<float>(window.getSize().x),
+                                  static_cast<float>(window.getSize().y)});
+    background.setFillColor(sf::Color::Black);
+    window.draw(background);
+
+    // Draw title
+    drawCenteredText(window, "LAN Multiplayer", 100.0f, TITLE_SIZE, sf::Color::White);
+
+    // Draw options
+    drawMenuOption(window, "Host Game", 250.0f, selectedOption == 0);
+    drawMenuOption(window, "Join Game", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+}
+
+void MenuView::renderHostGame(sf::RenderWindow& window, const std::string& localIP, bool connected) const {
     // Draw background
     sf::RectangleShape background({static_cast<float>(window.getSize().x),
                                   static_cast<float>(window.getSize().y)});
@@ -93,54 +122,20 @@ void MenuView::renderHostGame(sf::RenderWindow& window, bool isConnected,
     // Draw title
     drawCenteredText(window, "Hosting Game", 100.0f, TITLE_SIZE, sf::Color::White);
 
-    if (isConnected) {
-        drawCenteredText(window, "Player connected! Game starting...", 
-                        250.0f, OPTION_SIZE, sf::Color::Green);
+    // Show local IP
+    drawCenteredText(window, "Your IP: " + localIP, 200.0f, OPTION_SIZE, sf::Color::Cyan);
+
+    // Show status
+    if (connected) {
+        drawCenteredText(window, "Player Connected!", 280.0f, OPTION_SIZE, sf::Color::Green);
+        drawCenteredText(window, "Starting game...", 340.0f, OPTION_SIZE - 6, sf::Color::White);
     } else {
-        drawCenteredText(window, "Waiting for player to connect...", 
-                        250.0f, OPTION_SIZE, sf::Color::Yellow);
-        
-        float yPos = 300.0f;
-        
-        drawCenteredText(window, "Connection Information:", 
-                        yPos, OPTION_SIZE * 0.8f, sf::Color::White);
-        yPos += 40.0f;
-        
-        // Display local IP for LAN play (show first as it's easier)
-        if (!localIP.empty() && localIP != "Unknown") {
-            std::string ipText = "Local Network: " + localIP + ":53000";
-            drawCenteredText(window, ipText, 
-                            yPos, OPTION_SIZE * 0.9f, sf::Color::Green);
-            yPos += 30.0f;
-            drawCenteredText(window, "Use this if on same Wi-Fi/router", 
-                            yPos, OPTION_SIZE * 0.6f, sf::Color::Cyan);
-            yPos += 50.0f;
-        }
-        
-        // Display public IP for internet play
-        if (!publicIP.empty() && publicIP.find("public") == std::string::npos) {
-            std::string ipText = "Internet: " + publicIP + ":53000";
-            drawCenteredText(window, ipText, 
-                            yPos, OPTION_SIZE * 0.9f, sf::Color::Yellow);
-            yPos += 30.0f;
-            drawCenteredText(window, "Use this for different networks", 
-                            yPos, OPTION_SIZE * 0.6f, sf::Color::Cyan);
-            yPos += 30.0f;
-            drawCenteredText(window, "(Requires port forwarding)", 
-                            yPos, OPTION_SIZE * 0.5f, sf::Color::Red);
-            yPos += 40.0f;
-        } else if (publicIP.empty() || publicIP.find("public") != std::string::npos) {
-            drawCenteredText(window, "Fetching public IP...", 
-                            yPos, OPTION_SIZE * 0.7f, sf::Color::Yellow);
-            yPos += 30.0f;
-        }
-        
-        // Draw cancel option
-        drawMenuOption(window, "Cancel", 450.0f, selectedOption == 0);
+        drawCenteredText(window, "Waiting for connection...", 280.0f, OPTION_SIZE, sf::Color::Yellow);
+        drawCenteredText(window, "Press ESC to cancel", 400.0f, OPTION_SIZE - 8, sf::Color(150, 150, 150));
     }
 }
 
-void MenuView::renderJoinGame(sf::RenderWindow& window, int selectedOption) const {
+void MenuView::renderJoinGame(sf::RenderWindow& window, int selectedOption, const std::string& ipInput) const {
     // Draw background
     sf::RectangleShape background({static_cast<float>(window.getSize().x),
                                   static_cast<float>(window.getSize().y)});
@@ -150,49 +145,37 @@ void MenuView::renderJoinGame(sf::RenderWindow& window, int selectedOption) cons
     // Draw title
     drawCenteredText(window, "Join Game", 100.0f, TITLE_SIZE, sf::Color::White);
 
-    // Draw connection options
-    drawMenuOption(window, "Local Network", 250.0f, selectedOption == 0);
-    drawCenteredText(window, "Same Wi-Fi/router", 250.0f + 30.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
-    
-    drawMenuOption(window, "Internet", 250.0f + OPTION_SPACING, selectedOption == 1);
-    drawCenteredText(window, "Different networks", 250.0f + OPTION_SPACING + 30.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
-    
-    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
-}
+    // Draw instruction
+    drawCenteredText(window, "Enter host IP address:", 200.0f, OPTION_SIZE - 4, sf::Color::White);
 
-void MenuView::renderEnterIP(sf::RenderWindow& window, const std::string& currentIP, int selectedOption, const std::string& errorMessage) const {
-    sf::RectangleShape background({static_cast<float>(window.getSize().x),
-                                  static_cast<float>(window.getSize().y)});
-    background.setFillColor(sf::Color::Black);
-    window.draw(background);
+    // Draw IP input box
+    float boxWidth = 400.0f;
+    float boxHeight = 50.0f;
+    float boxX = (window.getSize().x - boxWidth) / 2;
+    float boxY = 260.0f;
 
-    drawCenteredText(window, "Enter Server Address", 100.0f, TITLE_SIZE, sf::Color::White);
+    sf::RectangleShape inputBox({boxWidth, boxHeight});
+    inputBox.setPosition({boxX, boxY});
+    inputBox.setFillColor(sf::Color(40, 40, 40));
+    inputBox.setOutlineThickness(2.0f);
+    inputBox.setOutlineColor(sf::Color::Cyan);
+    window.draw(inputBox);
 
-    std::string ipDisplay = "Address: " + (currentIP.empty() ? "..." : currentIP);
-    drawCenteredText(window, ipDisplay, 250.0f, OPTION_SIZE, 
-                     selectedOption == 0 ? sf::Color::Yellow : sf::Color::White);
-    
-    drawCenteredText(window, "Format: IP:PORT (e.g., 192.168.1.100:53000)", 
-                    300.0f, OPTION_SIZE * 0.7f, sf::Color::White);
-    drawCenteredText(window, "Port is optional (default: 53000)", 
-                    330.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
-    
-    drawCenteredText(window, "Local Network: Use 192.168.x.x (same Wi-Fi)", 
-                    360.0f, OPTION_SIZE * 0.6f, sf::Color::Green);
-    drawCenteredText(window, "Internet: Use public IP (different networks)", 
-                    385.0f, OPTION_SIZE * 0.6f, sf::Color::Yellow);
-    
-    if (!errorMessage.empty()) {
-        drawCenteredText(window, errorMessage, 410.0f, OPTION_SIZE * 0.6f, sf::Color::Red);
+    // Draw IP text
+    if (m_fontLoaded) {
+        sf::Text ipText(m_font, ipInput.empty() ? "192.168.x.x" : ipInput, 32);
+        ipText.setFillColor(ipInput.empty() ? sf::Color(100, 100, 100) : sf::Color::White);
+        sf::FloatRect bounds = ipText.getLocalBounds();
+        ipText.setPosition(sf::Vector2f(boxX + 10, boxY + 10));
+        window.draw(ipText);
     }
-    
-    drawMenuOption(window, "Back", 450.0f, selectedOption == 1);
-    
-    drawCenteredText(window, "Backspace to delete | Enter to connect", 
-                    460.0f, OPTION_SIZE * 0.6f, sf::Color::Cyan);
+
+    // Draw options
+    drawMenuOption(window, "Connect", 360.0f, selectedOption == 0);
+    drawMenuOption(window, "Back", 360.0f + OPTION_SPACING, selectedOption == 1);
 }
 
-void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption, bool isMultiplayer) const {
+void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) const {
     // Draw semi-transparent overlay
     sf::RectangleShape overlay({static_cast<float>(window.getSize().x),
                                static_cast<float>(window.getSize().y)});
@@ -201,7 +184,7 @@ void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption, boo
 
     // Draw pause menu box
     float boxWidth = 400.0f;
-    float boxHeight = isMultiplayer ? 360.0f : 300.0f;  // Taller if multiplayer
+    float boxHeight = 300.0f;
     float boxX = (window.getSize().x - boxWidth) / 2;
     float boxY = (window.getSize().y - boxHeight) / 2;
 
@@ -218,37 +201,51 @@ void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption, boo
     // Draw options
     float optionY = boxY + 120.0f;
     drawMenuOption(window, "Resume", optionY, selectedOption == 0);
-    
-    if (isMultiplayer) {
-        // Multiplayer mode: Show disconnect option
-        drawMenuOption(window, "Disconnect", optionY + OPTION_SPACING, selectedOption == 1);
-        drawMenuOption(window, "Main Menu", optionY + 2 * OPTION_SPACING, selectedOption == 2);
-    } else {
-        // Solo mode: Just main menu
-        drawMenuOption(window, "Main Menu", optionY + OPTION_SPACING, selectedOption == 1);
-    }
+    drawMenuOption(window, "Main Menu", optionY + OPTION_SPACING, selectedOption == 1);
 }
 
-void MenuView::renderGameOver(sf::RenderWindow& window, int finalScore, int selectedOption) const {
+void MenuView::renderGameOver(sf::RenderWindow& window, int player1Score, int player1Lines, int selectedOption,
+                             bool isMultiplayer, int winnerId, const std::string& winnerName,
+                             int player2Score, int player2Lines) const {
     // Draw background
     sf::RectangleShape background({static_cast<float>(window.getSize().x),
                                   static_cast<float>(window.getSize().y)});
     background.setFillColor(sf::Color::Black);
     window.draw(background);
 
-    // Draw title
-    drawCenteredText(window, "GAME OVER", 100.0f, TITLE_SIZE, sf::Color::Red);
+    // Draw title based on multiplayer or singleplayer
+    if (isMultiplayer && winnerId != -1) {
+        // Multiplayer: Show winner
+        drawCenteredText(window, "GAME OVER", 80.0f, TITLE_SIZE, sf::Color::Red);
+        
+        std::string winnerText = winnerName.empty() ? ("Player " + std::to_string(winnerId + 1) + " Wins!") 
+                                                     : (winnerName + " Wins!");
+        drawCenteredText(window, winnerText, 160.0f, OPTION_SIZE + 8, sf::Color::Yellow);
+        
+        // Draw both players' stats
+        drawCenteredText(window, "Player 1 - Score: " + std::to_string(player1Score) + ", Lines: " + std::to_string(player1Lines),
+                        230.0f, OPTION_SIZE - 4, sf::Color::White);
+        drawCenteredText(window, "Player 2 - Score: " + std::to_string(player2Score) + ", Lines: " + std::to_string(player2Lines),
+                        280.0f, OPTION_SIZE - 4, sf::Color::White);
+    } else {
+        // Singleplayer: Normal game over
+        drawCenteredText(window, "GAME OVER", 100.0f, TITLE_SIZE, sf::Color::Red);
 
-    // Draw score
-    drawCenteredText(window, "Final Score: " + std::to_string(finalScore), 
-                    200.0f, OPTION_SIZE, sf::Color::White);
+        // Draw score
+        drawCenteredText(window, "Final Score: " + std::to_string(player1Score), 
+                        200.0f, OPTION_SIZE, sf::Color::White);
+        
+        // Draw lines cleared
+        drawCenteredText(window, "Lines Cleared: " + std::to_string(player1Lines), 
+                        260.0f, OPTION_SIZE, sf::Color::White);
+    }
 
     // Draw options
     drawMenuOption(window, "Play Again", 350.0f, selectedOption == 0);
     drawMenuOption(window, "Main Menu", 350.0f + OPTION_SPACING, selectedOption == 1);
 }
 
-int MenuView::getOptionCount(MenuState menuState, bool isMultiplayer) const {
+int MenuView::getOptionCount(MenuState menuState) const {
     switch (menuState) {
         case MenuState::MAIN_MENU:
             return 3; // Start Game, Multiplayer, Exit
@@ -257,15 +254,17 @@ int MenuView::getOptionCount(MenuState menuState, bool isMultiplayer) const {
         case MenuState::AI_SELECTION:
             return 3; // Simple AI, Advanced AI, Back
         case MenuState::MULTIPLAYER_MENU:
-            return 5; // Host Game, Join Game, AI vs AI (Local), Player vs AI, Back
+            return 3; // Local Multiplayer, LAN Multiplayer, Back
+        case MenuState::LOCAL_MULTIPLAYER:
+            return 3; // AI vs AI, Player vs AI, Back
+        case MenuState::LAN_MULTIPLAYER:
+            return 3; // Host Game, Join Game, Back
         case MenuState::HOST_GAME:
-            return 1; // Cancel option
+            return 0; // No options, waiting for connection
         case MenuState::JOIN_GAME:
-            return 3; // Connect to localhost, Enter IP address, Back
-        case MenuState::ENTER_IP:
-            return 2; // Input field (option 0) and Back (option 1)
+            return 2; // Connect, Back
         case MenuState::PAUSE_MENU:
-            return isMultiplayer ? 3 : 2; // Resume, Disconnect/Main Menu, Main Menu (if multiplayer)
+            return 2; // Resume, Main Menu
         case MenuState::GAME_OVER:
             return 2; // Play Again, Main Menu
         default:

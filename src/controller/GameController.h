@@ -3,12 +3,12 @@
 #include "InputHandler.h"
 #include "../view/MenuView.h"
 #include "../ai/AIPlayer.h"
+#include "../network/NetworkManager.h"
 #include <SFML/Window/Event.hpp>
 #include <memory>
 
 // Forward declarations
 class GameMode;
-class MultiplayerEngine;
 
 // GameController manages the game loop and coordinates between
 // input handling, game state updates, and rendering
@@ -27,7 +27,7 @@ public:
     const GameState& getGameState() const;
     GameState& getGameState();
     
-    // Get remote game state (for multiplayer rendering)
+    // Get opponent game state (for multiplayer/local AI rendering)
     const GameState& getRemoteGameState() const;
     
     // Check if game is over
@@ -44,40 +44,29 @@ public:
     // Check if application should close
     bool shouldExit() const { return m_shouldExit; }
     
-    // Network multiplayer methods
+    // Multiplayer state helpers
+    bool isLocalMultiplayerMode() const { return m_localAIMode; }
+    bool isNetworkMultiplayerMode() const { return m_networkMode; }
+    int getWinnerId() const;
+    std::string getWinnerName() const;
+    
+    // LAN Network methods
     void startHosting(unsigned short port = 53000);
-    void connectToServer(const std::string& serverIP, unsigned short port = 53000);
+    void connectToHost(const std::string& ip, unsigned short port = 53000);
     void disconnectNetwork();
-    bool isHosting() const;
-    bool isConnected() const;
-    bool isClientConnected() const;  // For server: check if client is connected
-    bool isNetworkMode() const;
+    bool isNetworkConnected() const;
+    std::string getLocalIP() const;
+    std::string getIPInput() const { return m_ipInput; }
     
-    // IP input for joining remote servers
-    const std::string& getIPInput() const { return m_serverIPInput; }
-    void appendToIPInput(char c);
-    void removeLastIPChar();
-    
-    // Get server's local IP address (for hosting)
-    std::string getServerLocalIP() const;
-    
-    // Get server's public IP address (for internet play)
-    std::string getServerPublicIP() const;
-    
-    // Get last connection error message
-    std::string getLastConnectionError() const;
-    
-    // Get network latency (for multiplayer)
-    uint32_t getNetworkLatency() const;
-    
-    // Get remote player name (for multiplayer)
-    std::string getRemotePlayerName() const;
-    
-    // AI vs AI and Player vs AI support
+    // Local AI mode: AI vs AI and Player vs AI support
     void setLocalPlayerAI(bool enabled, bool useAdvanced = true);
     bool isLocalPlayerAI() const { return m_localPlayerAI; }
-    void setRemotePlayerAI(bool enabled, bool useAdvanced = true);
+    void setRemotePlayerAI(bool enabled, bool useAdvanced = true);  // "Remote" = second/opponent player in local mode
     bool isRemotePlayerAI() const { return m_remotePlayerAI; }
+    
+    // Network helper methods
+    PacketData gameStateToPacket(const GameState& state);
+    void packetToGameState(const PacketData& packet, GameState& state);
 
 private:
     GameState m_gameState;
@@ -88,10 +77,12 @@ private:
     int m_selectedOption;
     bool m_shouldExit;
     
-    // Network
-    std::unique_ptr<MultiplayerEngine> m_multiplayerEngine;
-    bool m_isHosting;  // true = server, false = client or solo
-    std::string m_serverIPInput;  // For IP input in ENTER_IP menu
+    // Network multiplayer
+    std::unique_ptr<NetworkManager> m_networkManager;
+    bool m_networkMode;  // LAN network multiplayer mode
+    float m_networkUpdateTimer;
+    static constexpr float NETWORK_UPDATE_INTERVAL = 0.016f; // ~60 updates/sec
+    std::string m_ipInput;  // For JOIN_GAME menu: IP address input
     
     // AI for multiplayer and local modes
     bool m_localPlayerAI;
@@ -104,9 +95,12 @@ private:
     std::unique_ptr<AIPlayer> m_aiPlayer;
     std::unique_ptr<AIPlayer> m_remoteAIPlayer;
     
+    // Winner tracking for local AI mode
+    int m_localAIModeWinnerId;
+    std::string m_localAIModeWinnerName;
+    
     // Input timing for movement (to prevent too-fast movement)
     float m_inputTimer;
-    float m_multiplayerInputTimer;  // Separate timer for multiplayer input throttling
     static constexpr float INPUT_DELAY = 0.1f; // 100ms delay between moves (same for single and multiplayer)
     
     // Process continuous input (movement keys)

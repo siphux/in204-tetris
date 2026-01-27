@@ -9,9 +9,10 @@ enum class MenuState {
     MODE_SELECTION,
     AI_SELECTION,
     MULTIPLAYER_MENU,
+    LOCAL_MULTIPLAYER,
+    LAN_MULTIPLAYER,
     HOST_GAME,
     JOIN_GAME,
-    ENTER_IP,
     PAUSE_MENU,
     GAME_OVER,
     NONE  // No menu active
@@ -34,24 +35,28 @@ public:
     // Render multiplayer menu
     void renderMultiplayerMenu(sf::RenderWindow& window, int selectedOption) const;
 
+    // Render local multiplayer menu
+    void renderLocalMultiplayerMenu(sf::RenderWindow& window, int selectedOption) const;
+
+    // Render LAN multiplayer menu
+    void renderLANMultiplayerMenu(sf::RenderWindow& window, int selectedOption) const;
+
     // Render host game menu (waiting for connection)
-    void renderHostGame(sf::RenderWindow& window, bool isConnected, 
-                       const std::string& localIP = "", const std::string& publicIP = "", int selectedOption = 0) const;
+    void renderHostGame(sf::RenderWindow& window, const std::string& localIP, bool connected) const;
 
-    // Render join game menu
-    void renderJoinGame(sf::RenderWindow& window, int selectedOption) const;
-
-    // Render IP input menu
-    void renderEnterIP(sf::RenderWindow& window, const std::string& currentIP, int selectedOption = 0, const std::string& errorMessage = "") const;
+    // Render join game menu (enter IP)
+    void renderJoinGame(sf::RenderWindow& window, int selectedOption, const std::string& ipInput) const;
 
     // Render pause menu
-    void renderPauseMenu(sf::RenderWindow& window, int selectedOption, bool isMultiplayer = false) const;
+    void renderPauseMenu(sf::RenderWindow& window, int selectedOption) const;
 
-    // Render game over screen with final score
-    void renderGameOver(sf::RenderWindow& window, int finalScore, int selectedOption) const;
+    // Render game over screen with final score and lines cleared
+    void renderGameOver(sf::RenderWindow& window, int player1Score, int player1Lines, int selectedOption,
+                       bool isMultiplayer = false, int winnerId = -1, const std::string& winnerName = "",
+                       int player2Score = 0, int player2Lines = 0) const;
 
     // Get number of options in current menu
-    int getOptionCount(MenuState menuState, bool isMultiplayer = false) const;
+    int getOptionCount(MenuState menuState) const;
 
 private:
     sf::Font m_font;

@@ -12,8 +12,8 @@ include(FetchContent)
 set(SFML_BUILD_AUDIO ON CACHE BOOL "Build SFML audio module" FORCE)
 set(SFML_BUILD_GRAPHICS ON CACHE BOOL "Build SFML graphics module" FORCE)
 set(SFML_BUILD_WINDOW ON CACHE BOOL "Build SFML window module" FORCE)
-set(SFML_BUILD_SYSTEM ON CACHE BOOL "Build SFML system module" FORCE)
 set(SFML_BUILD_NETWORK ON CACHE BOOL "Build SFML network module" FORCE)
+set(SFML_BUILD_SYSTEM ON CACHE BOOL "Build SFML system module" FORCE)
 
 
 FetchContent_Declare(
@@ -40,6 +40,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     sfml-graphics
     sfml-window
     sfml-system
-    sfml-network
     sfml-audio
+    sfml-network
 )

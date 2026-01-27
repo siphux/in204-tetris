@@ -30,16 +30,14 @@ GameView::GameView() : m_fontLoaded(false) {
 // Called every frame to update what the player sees
 void GameView::render(sf::RenderWindow& window, const GameState& state,
                       const MenuView& menuView, MenuState menuState, int selectedOption,
-                      bool isHosting, bool isClientConnected, const std::string& ipInput,
-                      const std::string& serverLocalIP, const std::string& serverPublicIP,
-                      bool isNetworkMode, const std::string& connectionError,
-                      const GameState* remoteState, uint32_t latency) {
+                      bool isMultiplayer, const GameState* remoteState,
+                      int winnerId, const std::string& winnerName,
+                      bool isNetworkConnected, const std::string& localIP) {
     // Clear the window with black background
     window.clear(sf::Color::Black);
 
     // Always render the game in the background (even if menu is showing)
-    bool isConnected = isNetworkMode && isClientConnected;
-    renderGame(window, state, isNetworkMode, remoteState, isConnected, latency);
+    renderGame(window, state, isMultiplayer, remoteState);
 
     // Then render menu on top if a menu is active
     if (menuState != MenuState::NONE) {
@@ -56,21 +54,39 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
             case MenuState::MULTIPLAYER_MENU:
                 menuView.renderMultiplayerMenu(window, selectedOption);
                 break;
+            case MenuState::LOCAL_MULTIPLAYER:
+                menuView.renderLocalMultiplayerMenu(window, selectedOption);
+                break;
+            case MenuState::LAN_MULTIPLAYER:
+                menuView.renderLANMultiplayerMenu(window, selectedOption);
+                break;
             case MenuState::HOST_GAME:
-                menuView.renderHostGame(window, isClientConnected, serverLocalIP, serverPublicIP, selectedOption);
+                menuView.renderHostGame(window, localIP, isNetworkConnected);
                 break;
             case MenuState::JOIN_GAME:
-                menuView.renderJoinGame(window, selectedOption);
-                break;
-            case MenuState::ENTER_IP:
-                menuView.renderEnterIP(window, ipInput, selectedOption, connectionError);
+                menuView.renderJoinGame(window, selectedOption, m_ipInput);
                 break;
             case MenuState::PAUSE_MENU:
-                menuView.renderPauseMenu(window, selectedOption, isNetworkMode);
+                menuView.renderPauseMenu(window, selectedOption);
                 break;
-            case MenuState::GAME_OVER:
-                menuView.renderGameOver(window, state.score(), selectedOption);
+            case MenuState::GAME_OVER: {
+                int player1Lines = 0;
+                if (state.getGameMode()) {
+                    player1Lines = state.getGameMode()->getLinesCleared();
+                }
+
+                int player2Lines = 0;
+                int player2Score = 0;
+                if (remoteState && remoteState->getGameMode()) {
+                    player2Lines = remoteState->getGameMode()->getLinesCleared();
+                    player2Score = remoteState->score();
+                }
+
+                menuView.renderGameOver(window, state.score(), player1Lines, selectedOption,
+                                       isMultiplayer, winnerId, winnerName,
+                                       player2Score, player2Lines);
                 break;
+            }
             default:
                 break;
         }
@@ -82,8 +98,7 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
 // Render the actual game (board, pieces, UI)
 // Handles both single-player and multiplayer (split-screen) modes
 void GameView::renderGame(sf::RenderWindow& window, const GameState& state, 
-                          bool isMultiplayer, const GameState* remoteState,
-                          bool isConnected, uint32_t latency) {
+                          bool isMultiplayer, const GameState* remoteState) {
     // Game over is handled by the menu system, not here
     
     // Check if we're in multiplayer mode with a remote player
@@ -103,8 +118,10 @@ void GameView::renderGame(sf::RenderWindow& window, const GameState& state,
         if (!state.isClearingLines()) {
             drawCurrentPiece(window, state, leftX, 0.0f);
         }
-        drawNextPiece(window, state.nextPiece(), leftX - 80.0f, 0.0f);
-        drawUI(window, state, leftX + BoardOffsetX, "You");
+        // Preview centered above the board for the left player
+        float previewLeftX = leftX + (Board::Width * CellSize - 4 * CellSize) / 2.0f;
+        drawNextPiece(window, state.nextPiece(), previewLeftX - 250, 0.0f);
+        drawUI(window, state, leftX - BoardOffsetX - 150, "You");
         
         // Right board (remote player)
         float rightX = startX + boardWidth + spacing - BoardOffsetX;
@@ -112,11 +129,11 @@ void GameView::renderGame(sf::RenderWindow& window, const GameState& state,
         if (!remoteState->isClearingLines()) {
             drawCurrentPiece(window, *remoteState, rightX, 0.0f);
         }
-        drawNextPiece(window, remoteState->nextPiece(), rightX + boardWidth + 20.0f, 0.0f);
-        drawUI(window, *remoteState, rightX + BoardOffsetX, "Opponent");
+        // Preview centered above the board for the right player
+        float previewRightX = rightX + (Board::Width * CellSize - 4 * CellSize) / 2.0f;
+        drawNextPiece(window, remoteState->nextPiece(), previewRightX + 250, 0.0f);
+        drawUI(window, *remoteState, rightX + BoardOffsetX + 300, "Opponent");
         
-        // Connection status
-        drawConnectionStatus(window, isConnected, latency);
     } else {
         // Solo mode - normal rendering
         drawBoard(window, state.board(), state);
@@ -125,7 +142,7 @@ void GameView::renderGame(sf::RenderWindow& window, const GameState& state,
             drawCurrentPiece(window, state);
         }
         
-        // Next piece preview to the right of the board
+        // Next piece preview to the right of the board (solo positioning)
         float nextPieceX = BoardOffsetX + Board::Width * CellSize + 50.0f;
         drawNextPiece(window, state.nextPiece(), nextPieceX - BoardOffsetX, 0.0f);
         drawUI(window, state);
@@ -297,8 +314,9 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state,
         // Multiplayer mode: use provided offset
         uiX = BoardOffsetX + offsetX;
     }
+    // Both solo and multiplayer UI at the same vertical position
     float uiY = BoardOffsetY + 200.0f;
-    const float lineHeight = 30.0f;
+    const float lineHeight = playerLabel.empty() ? 30.0f : 28.0f;
 
     // Player label (for multiplayer)
     if (!playerLabel.empty()) {
@@ -364,27 +382,6 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state,
         linesText.setFillColor(sf::Color::Yellow);
         linesText.setPosition({uiX, uiY});
         window.draw(linesText);
-    }
-}
-
-void GameView::drawConnectionStatus(sf::RenderWindow& window, bool isConnected, uint32_t latency) {
-    if (!m_fontLoaded) return;
-    
-    float statusX = 10.0f;
-    float statusY = 10.0f;
-    
-    sf::Text statusText(m_font, isConnected ? "Connected" : "Disconnected");
-    statusText.setCharacterSize(18);
-    statusText.setFillColor(isConnected ? sf::Color::Green : sf::Color::Red);
-    statusText.setPosition({statusX, statusY});
-    window.draw(statusText);
-    
-    if (isConnected && latency > 0) {
-        sf::Text latencyText(m_font, "Latency: " + std::to_string(latency) + "ms");
-        latencyText.setCharacterSize(16);
-        latencyText.setFillColor(sf::Color::Cyan);
-        latencyText.setPosition({statusX, statusY + 25.0f});
-        window.draw(latencyText);
     }
 }
 

@@ -2,104 +2,63 @@
 #include "../model/LevelBasedMode.h"
 #include "../model/DeathrunMode.h"
 #include "../model/AIMode.h"
-#include "../network/MultiplayerEngine.h"
-#include "../network/NetworkManager.h"
-#include "../network/NetworkConfig.h"
 #include "../ai/SimpleAI.h"
 #include "../ai/AdvancedAI.h"
+
+namespace {
+constexpr int TARGET_LINES = 40;
+constexpr float AI_MOVE_DELAY = 0.2f;
+}
 
 // GameController: The main controller that manages the entire game
 // It handles input, updates game state, and coordinates between model and view
 
 // Initialize all game state variables
 GameController::GameController()
-    : m_inputTimer(0.0f),                    // Timer for input delay
-      m_multiplayerInputTimer(0.0f),         // Timer for multiplayer input throttling
-      m_currentMenuState(MenuState::MAIN_MENU),  // Start at main menu
+        : m_inputTimer(0.0f),                    // Timer for input delay
+            m_currentMenuState(MenuState::MAIN_MENU),  // Start at main menu
       m_selectedOption(0),                   // First option selected
       m_shouldExit(false),                   // Don't exit yet
-      m_isHosting(false),                    // Not hosting a game
-      m_serverIPInput(""),                   // No IP entered yet
+      m_networkManager(nullptr),             // No network by default
+      m_networkMode(false),                  // Not in network mode
+      m_networkUpdateTimer(0.0f),            // Network update timer
+      m_ipInput(""),                         // Empty IP input
       m_localPlayerAI(false),                // Local player is human by default
       m_localPlayerAIAdvanced(false),        // AI difficulty
-      m_remotePlayerAI(false),               // Remote player is human by default
-      m_remotePlayerAIAdvanced(false),       // Remote AI difficulty
+      m_remotePlayerAI(false),               // Second player is human by default
+      m_remotePlayerAIAdvanced(false),       // Second player AI difficulty
       m_localAIMode(false),                  // Not in local AI mode
       m_aiMoveTimer(0.0f),                   // Timer for AI moves
-      m_remoteAIMoveTimer(0.0f) {}          // Timer for remote AI moves
+      m_remoteAIMoveTimer(0.0f),             // Timer for second player AI moves
+      m_localAIModeWinnerId(-1),             // No winner yet
+      m_localAIModeWinnerName("") {}         // No winner name yet
 
 // Clean up when controller is destroyed
-GameController::~GameController() {
-    disconnectNetwork();  // Make sure we disconnect from network
-}
+GameController::~GameController() = default;
 
 // Handle all events from SFML (key presses, mouse clicks, etc.)
 // Note: Key repeat is disabled in main.cpp to prevent duplicate key press events
 void GameController::handleEvent(const sf::Event& event) {
-    // Handle IP input (text entry) if in ENTER_IP menu
-    if (m_currentMenuState == MenuState::ENTER_IP) {
-        // Handle key presses first (for Backspace, Delete, etc.)
-        if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>()) {
-            // Handle editing keys directly
-            if (keyPressed->code == sf::Keyboard::Key::Backspace) {
-                removeLastIPChar();
-                return;
-            } else if (keyPressed->code == sf::Keyboard::Key::Delete) {
-                // Delete key - same as backspace for simplicity
-                removeLastIPChar();
-                return;
-            } else if (keyPressed->code == sf::Keyboard::Key::Enter) {
-                if (m_selectedOption == 1) {
-                    m_currentMenuState = MenuState::JOIN_GAME;
-                    m_selectedOption = 1;
-                } else if (!m_serverIPInput.empty()) {
-                    std::string ip = m_serverIPInput;
-                    unsigned short port = 53000;
-                    
-                    size_t colonPos = ip.find(':');
-                    if (colonPos != std::string::npos) {
-                        std::string portStr = ip.substr(colonPos + 1);
-                        ip = ip.substr(0, colonPos);
-                        try {
-                            int portInt = std::stoi(portStr);
-                            if (portInt > 0 && portInt <= 65535) {
-                                port = static_cast<unsigned short>(portInt);
-                            }
-                        } catch (...) {
-                        }
-                    }
-                    
-                    connectToServer(ip, port);
-                }
-                return;
-            } else if (keyPressed->code == sf::Keyboard::Key::Escape) {
-                // Cancel and go back
-                m_currentMenuState = MenuState::JOIN_GAME;
-                m_selectedOption = 1; // Return to "Enter IP address" option
-                return;
-            }
-            // For other keys, let handleMenuInput handle them (though it shouldn't be needed here)
-            handleMenuInput(keyPressed->code);
-            return;
-        }
-        
-        // Handle text input (for typing characters)
-        if (const auto* textEntered = event.getIf<sf::Event::TextEntered>()) {
-            char c = static_cast<char>(textEntered->unicode);
-            if (c >= 32 && c <= 126) {
-                if ((c >= '0' && c <= '9') || c == '.' || c == ':') {
-                    appendToIPInput(c);
-                    m_selectedOption = 0;
-                }
-            }
-        }
-        return;
-    }
-    
     // Handle menu input first
     if (m_currentMenuState != MenuState::NONE) {
         if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>()) {
             handleMenuInput(keyPressed->code);
+        }
+        // Handle text input for JOIN_GAME menu
+        if (m_currentMenuState == MenuState::JOIN_GAME) {
+            if (const auto* textEntered = event.getIf<sf::Event::TextEntered>()) {
+                char c = static_cast<char>(textEntered->unicode);
+                // Allow digits and dots for IP address
+                if ((c >= '0' && c <= '9') || c == '.') {
+                    if (m_ipInput.length() < 15) {  // Max IP length
+                        m_ipInput += c;
+                    }
+                }
+                // Handle backspace
+                else if (c == 8 && !m_ipInput.empty()) {  // Backspace
+                    m_ipInput.pop_back();
+                }
+            }
         }
         return;
     }
@@ -136,44 +95,7 @@ void GameController::handleEvent(const sf::Event& event) {
             }
         }
         
-        // Network mode: send inputs to multiplayer engine (only if game is still running)
-        if (m_multiplayerEngine && m_multiplayerEngine->isConnected() && 
-            m_multiplayerEngine->isGameRunning() && !m_localAIMode && !isAIControlling) {
-            // For movement keys (left/right/down), use InputHandler to track state
-            // and send input through the throttled update loop instead of immediately
-            // This prevents sending too many inputs when keys are held down
-            if (keyPressed->code == sf::Keyboard::Key::Left ||
-                keyPressed->code == sf::Keyboard::Key::Right ||
-                keyPressed->code == sf::Keyboard::Key::Down) {
-                // Track key state for continuous input
-                m_inputHandler.handleKeyPress(keyPressed->code);
-                // Process first press immediately (no delay), subsequent holds will be throttled
-                if (m_inputHandler.wasKeyJustPressed(keyPressed->code)) {
-                    if (keyPressed->code == sf::Keyboard::Key::Left) {
-                        m_multiplayerEngine->sendInput(InputAction::MOVE_LEFT);
-                    } else if (keyPressed->code == sf::Keyboard::Key::Right) {
-                        m_multiplayerEngine->sendInput(InputAction::MOVE_RIGHT);
-                    } else if (keyPressed->code == sf::Keyboard::Key::Down) {
-                        m_multiplayerEngine->sendInput(InputAction::SOFT_DROP);
-                    }
-                    m_inputHandler.markKeyProcessed(keyPressed->code);
-                    // Reset timer so held keys are throttled
-                    m_multiplayerInputTimer = 0.0f;
-                }
-            } else {
-                // Discrete actions (rotation, hard drop) - send immediately
-                // Key repeat is disabled, so each key press is unique
-                if (keyPressed->code == sf::Keyboard::Key::Space) {
-                    m_multiplayerEngine->sendInput(InputAction::HARD_DROP);
-                } else if (keyPressed->code == sf::Keyboard::Key::Z) {
-                    m_multiplayerEngine->sendInput(InputAction::ROTATE_CCW);
-                } else if (keyPressed->code == sf::Keyboard::Key::X) {
-                    m_multiplayerEngine->sendInput(InputAction::ROTATE_CW);
-                } else if (keyPressed->code == sf::Keyboard::Key::Up) {
-                    m_multiplayerEngine->sendInput(InputAction::ROTATE_CW);
-                }
-            }
-        } else if (!isAIControlling) {
+        if (!isAIControlling) {
             // Only process input if AI is not controlling
             if (m_localAIMode && !m_localPlayerAI) {
                 // Local AI mode but local player is human - normal input handling
@@ -198,8 +120,7 @@ void GameController::handleEvent(const sf::Event& event) {
             }
         }
         
-        // Always update InputHandler for key releases (needed for multiplayer movement tracking)
-        // This ensures movement keys stop being sent when released
+        // Always update InputHandler for key releases (needed for movement tracking)
         if (!isAIControlling) {
             m_inputHandler.handleKeyRelease(keyReleased->code);
         }
@@ -208,15 +129,19 @@ void GameController::handleEvent(const sf::Event& event) {
 
 // Handle keyboard input when in a menu
 void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
-    // Get how many options are in the current menu
-    int optionCount = m_menuView.getOptionCount(m_currentMenuState, isNetworkMode());
+    // Special handling for Escape in HOST_GAME menu
+    if (m_currentMenuState == MenuState::HOST_GAME && key == sf::Keyboard::Key::Escape) {
+        disconnectNetwork();
+        m_currentMenuState = MenuState::LAN_MULTIPLAYER;
+        m_selectedOption = 0;
+        return;
+    }
     
-    // Special handling for IP input menu (can navigate between input field and Back button)
-    if (m_currentMenuState == MenuState::ENTER_IP) {
-        if (key == sf::Keyboard::Key::Up || key == sf::Keyboard::Key::Down) {
-            // Move selection up or down, wrapping around
-            m_selectedOption = (m_selectedOption + (key == sf::Keyboard::Key::Down ? 1 : -1) + optionCount) % optionCount;
-        }
+    // Get how many options are in the current menu
+    int optionCount = m_menuView.getOptionCount(m_currentMenuState);
+    
+    // Prevent division by zero if menu has no options
+    if (optionCount == 0) {
         return;
     }
     
@@ -277,99 +202,75 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             }
         } else if (m_currentMenuState == MenuState::MULTIPLAYER_MENU) {
             if (m_selectedOption == 0) {
-                // Host Game - start a server and wait for client
-                startHosting(53000);
+                m_currentMenuState = MenuState::LOCAL_MULTIPLAYER;
+                m_selectedOption = 0;
+            } else if (m_selectedOption == 1) {
+                // LAN Multiplayer
+                m_currentMenuState = MenuState::LAN_MULTIPLAYER;
+                m_selectedOption = 0;
+            } else if (m_selectedOption == 2) {
+                // Back - return to main menu
+                m_currentMenuState = MenuState::MAIN_MENU;
+                m_selectedOption = 1; // Return to Multiplayer option
+            }
+        } else if (m_currentMenuState == MenuState::LAN_MULTIPLAYER) {
+            if (m_selectedOption == 0) {
+                // Host Game
+                startHosting();
                 m_currentMenuState = MenuState::HOST_GAME;
                 m_selectedOption = 0;
             } else if (m_selectedOption == 1) {
-                // Join Game - go to IP input screen
+                // Join Game
+                m_ipInput = "";  // Clear IP input
                 m_currentMenuState = MenuState::JOIN_GAME;
                 m_selectedOption = 0;
             } else if (m_selectedOption == 2) {
-                // AI vs AI (Local) - two AIs play locally, no network needed
+                // Back
+                m_currentMenuState = MenuState::MULTIPLAYER_MENU;
+                m_selectedOption = 1;
+            }
+        } else if (m_currentMenuState == MenuState::HOST_GAME) {
+            // No selectable options in HOST_GAME - Escape handled above
+        } else if (m_currentMenuState == MenuState::JOIN_GAME) {
+            if (m_selectedOption == 0) {
+                // Connect
+                if (!m_ipInput.empty()) {
+                    connectToHost(m_ipInput);
+                    // If connection successful, game will start (NONE state)
+                    // If failed, stay in JOIN_GAME menu
+                }
+            } else if (m_selectedOption == 1) {
+                // Back
+                m_currentMenuState = MenuState::LAN_MULTIPLAYER;
+                m_selectedOption = 1;
+            }
+        } else if (m_currentMenuState == MenuState::LOCAL_MULTIPLAYER) {
+            if (m_selectedOption == 0) {
+                // AI vs AI - two AIs play locally, no network needed
                 m_localAIMode = true;
                 m_gameState.reset();
                 m_remoteGameState.reset();
                 m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
                 m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
-                // Local player: Advanced AI, Remote player: Simple AI
+                // Player 1 (left): Advanced AI, Player 2 (right): Simple AI
                 setLocalPlayerAI(true, true);
                 setRemotePlayerAI(true, false);
                 m_currentMenuState = MenuState::NONE;  // Start playing immediately
                 m_selectedOption = 0;
-            } else if (m_selectedOption == 3) {
+            } else if (m_selectedOption == 1) {
                 // Player vs AI - you play, AI plays against you (no network)
                 m_localAIMode = true;
                 m_gameState.reset();
                 m_remoteGameState.reset();
                 m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
                 m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
-                // Local player: Human (you), Remote player: Advanced AI
+                // Player 1 (you): Human, Player 2 (opponent): Advanced AI
                 setLocalPlayerAI(false, false);
                 setRemotePlayerAI(true, true);
                 m_currentMenuState = MenuState::NONE;  // Start playing immediately
                 m_selectedOption = 0;
-            } else if (m_selectedOption == 4) {
-                // Back - return to main menu
-                m_currentMenuState = MenuState::MAIN_MENU;
-                m_selectedOption = 1; // Return to Multiplayer option
-            }
-        } else if (m_currentMenuState == MenuState::JOIN_GAME) {
-            if (key == sf::Keyboard::Key::Escape) {
-                m_currentMenuState = MenuState::MULTIPLAYER_MENU;
-                m_selectedOption = 1;
-            } else if (m_selectedOption == 0) {
-                // Local Network - go to IP input
-                m_serverIPInput.clear();
-                m_currentMenuState = MenuState::ENTER_IP;
-                m_selectedOption = 0;
-            } else if (m_selectedOption == 1) {
-                // Internet - go to IP input
-                m_serverIPInput.clear();
-                m_currentMenuState = MenuState::ENTER_IP;
-                m_selectedOption = 0;
             } else if (m_selectedOption == 2) {
-                m_currentMenuState = MenuState::MULTIPLAYER_MENU;
-                m_selectedOption = 1;
-            }
-        } else if (m_currentMenuState == MenuState::ENTER_IP) {
-            if (m_selectedOption == 1) {
-                m_currentMenuState = MenuState::JOIN_GAME;
-                m_selectedOption = 1;
-            } else if (key == sf::Keyboard::Key::Enter) {
-                if (!m_serverIPInput.empty()) {
-                    std::string ip = m_serverIPInput;
-                    unsigned short port = 53000;
-                    
-                    size_t colonPos = ip.find(':');
-                    if (colonPos != std::string::npos) {
-                        std::string portStr = ip.substr(colonPos + 1);
-                        ip = ip.substr(0, colonPos);
-                        try {
-                            int portInt = std::stoi(portStr);
-                            if (portInt > 0 && portInt <= 65535) {
-                                port = static_cast<unsigned short>(portInt);
-                            }
-                        } catch (...) {
-                        }
-                    }
-                    
-                    connectToServer(ip, port);
-                }
-            } else if (key == sf::Keyboard::Key::Escape) {
-                m_currentMenuState = MenuState::JOIN_GAME;
-                m_selectedOption = 1;
-            }
-        } else if (m_currentMenuState == MenuState::HOST_GAME) {
-            if (m_selectedOption == 0) {
-                // Cancel hosting
-                disconnectNetwork();
-                m_currentMenuState = MenuState::MULTIPLAYER_MENU;
-                m_selectedOption = 0;
-            }
-            // ESC also cancels (for convenience)
-            if (key == sf::Keyboard::Key::Escape) {
-                disconnectNetwork();
+                // Back - return to multiplayer menu
                 m_currentMenuState = MenuState::MULTIPLAYER_MENU;
                 m_selectedOption = 0;
             }
@@ -378,34 +279,48 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 // Resume
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 1) {
-                // In multiplayer: Disconnect, in solo: Main Menu
-                if (isNetworkMode()) {
-                    // Disconnect and go back to multiplayer menu
-                    disconnectNetwork();
-                    m_gameState.reset();
-                    m_currentMenuState = MenuState::MULTIPLAYER_MENU;
-                    m_selectedOption = 0;
-                } else {
-                    // Solo mode: Main Menu
-                    m_gameState.reset();
-                    m_currentMenuState = MenuState::MAIN_MENU;
-                    m_selectedOption = 0;
-                }
-            } else if (m_selectedOption == 2 && isNetworkMode()) {
-                // Multiplayer mode: Main Menu (second option)
-                disconnectNetwork();
+                // Solo mode or local AI mode: Main Menu - reset all AI state
+                m_localAIMode = false;
+                m_localPlayerAI = false;
+                m_remotePlayerAI = false;
+                m_aiPlayer.reset();
+                m_remoteAIPlayer.reset();
+                m_aiMoveTimer = 0.0f;
+                m_remoteAIMoveTimer = 0.0f;
                 m_gameState.reset();
+                m_remoteGameState.reset();
                 m_currentMenuState = MenuState::MAIN_MENU;
                 m_selectedOption = 0;
             }
         } else if (m_currentMenuState == MenuState::GAME_OVER) {
             if (m_selectedOption == 0) {
-                // Play Again
+                // Play Again - reset all AI state
+                m_localAIMode = false;
+                m_localPlayerAI = false;
+                m_remotePlayerAI = false;
+                m_aiPlayer.reset();
+                m_remoteAIPlayer.reset();
+                m_aiMoveTimer = 0.0f;
+                m_remoteAIMoveTimer = 0.0f;
+                m_localAIModeWinnerId = -1;
+                m_localAIModeWinnerName = "";
+                m_gameState.reset();
+                m_remoteGameState.reset();
                 m_currentMenuState = MenuState::MODE_SELECTION;
                 m_selectedOption = 0;
             } else if (m_selectedOption == 1) {
-                // Main Menu
+                // Main Menu - reset all AI state
+                m_localAIMode = false;
+                m_localPlayerAI = false;
+                m_remotePlayerAI = false;
+                m_aiPlayer.reset();
+                m_remoteAIPlayer.reset();
+                m_aiMoveTimer = 0.0f;
+                m_remoteAIMoveTimer = 0.0f;
+                m_localAIModeWinnerId = -1;
+                m_localAIModeWinnerName = "";
                 m_gameState.reset();
+                m_remoteGameState.reset();
                 m_currentMenuState = MenuState::MAIN_MENU;
                 m_selectedOption = 0;
             }
@@ -417,19 +332,6 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
 }
 
 void GameController::update(float deltaTime) {
-    // Handle HOST_GAME menu state (check for connection)
-    if (m_currentMenuState == MenuState::HOST_GAME) {
-        if (m_multiplayerEngine && m_multiplayerEngine->isConnected()) {
-            // Client connected, begin playing
-            m_currentMenuState = MenuState::NONE;
-        }
-        // Continue updating engine even in menu
-        if (m_isHosting && m_multiplayerEngine) {
-            m_multiplayerEngine->update(deltaTime);
-        }
-        return;
-    }
-    
     // If we're in a menu, don't update game state
     if (m_currentMenuState != MenuState::NONE) {
         return;
@@ -444,11 +346,36 @@ void GameController::update(float deltaTime) {
         // Handle local player (either AI or human)
         updateLocalPlayerInAIMode(deltaTime);
         
-        // Handle remote player (AI)
+        // Handle second player (AI opponent)
         updateRemotePlayerInAIMode(deltaTime);
         
-        // Check if game is over
-        if (m_gameState.isGameOver() || m_remoteGameState.isGameOver()) {
+        // Check for marathon victory (first to reach target lines)
+        int targetLines = TARGET_LINES;
+        int player1Lines = m_gameState.getGameMode() ? m_gameState.getGameMode()->getLinesCleared() : 0;
+        int player2Lines = m_remoteGameState.getGameMode() ? m_remoteGameState.getGameMode()->getLinesCleared() : 0;
+        
+        bool marathonVictory = (player1Lines >= targetLines) || (player2Lines >= targetLines);
+        
+        // Check if game is over (marathon victory or board filled)
+        if (marathonVictory || m_gameState.isGameOver() || m_remoteGameState.isGameOver()) {
+            // Determine the winner
+            if (player1Lines >= targetLines && player2Lines < targetLines) {
+                m_localAIModeWinnerId = 0;
+                m_localAIModeWinnerName = "Player 1";
+            } else if (player2Lines >= targetLines && player1Lines < targetLines) {
+                m_localAIModeWinnerId = 1;
+                m_localAIModeWinnerName = "Player 2";
+            } else if (m_remoteGameState.isGameOver() && !m_gameState.isGameOver()) {
+                m_localAIModeWinnerId = 0;
+                m_localAIModeWinnerName = "Player 1";
+            } else if (m_gameState.isGameOver() && !m_remoteGameState.isGameOver()) {
+                m_localAIModeWinnerId = 1;
+                m_localAIModeWinnerName = "Player 2";
+            } else {
+                m_localAIModeWinnerId = -1;  // Tie or both died
+                m_localAIModeWinnerName = "";
+            }
+            
             m_currentMenuState = MenuState::GAME_OVER;
             m_selectedOption = 0;
         }
@@ -456,132 +383,97 @@ void GameController::update(float deltaTime) {
         return;
     }
 
-    // Network mode: Update multiplayer engine
-    if (m_multiplayerEngine && m_multiplayerEngine->isConnected()) {
-        // Update network and game logic
-        m_multiplayerEngine->update(deltaTime);
+    // Network multiplayer mode
+    if (m_networkMode && m_networkManager) {
+        // Update network (accept connections if hosting)
+        m_networkManager->update();
         
-        // Get game states from multiplayer engine
-        const GameState& localState = m_multiplayerEngine->getLocalGameState();
-        const GameState& remoteState = m_multiplayerEngine->getRemoteGameState();
-        
-        // Sync our local game states with the engine's states
-        m_gameState.syncBoard(localState.board());
-        m_remoteGameState.syncBoard(remoteState.board());
-        
-        // Process multiplayer input with throttling (exactly like single player)
-        // This prevents sending too many movement commands when keys are held
-        if (m_multiplayerEngine->isGameRunning() && !m_localAIMode) {
-            m_multiplayerInputTimer += deltaTime;
-            if (m_multiplayerInputTimer >= INPUT_DELAY) {
-                m_multiplayerInputTimer = 0.0f;
-                
-                // Send movement inputs if keys are held (throttled, same delay as single player)
-                if (m_inputHandler.isLeftPressed()) {
-                    m_multiplayerEngine->sendInput(InputAction::MOVE_LEFT);
-                }
-                if (m_inputHandler.isRightPressed()) {
-                    m_multiplayerEngine->sendInput(InputAction::MOVE_RIGHT);
-                }
-                if (m_inputHandler.isDownPressed()) {
-                    m_multiplayerEngine->sendInput(InputAction::SOFT_DROP);
-                }
-            }
-        }
-        
-        // If local player is AI, make AI moves (only if game is still running)
-        if (m_localPlayerAI && m_aiPlayer && m_multiplayerEngine->isGameRunning()) {
-            auto& config = NetworkConfig::getInstance();
-            m_aiMoveTimer += deltaTime;
-            
-            // Check if it's time for AI to make a move
-            if (m_aiMoveTimer >= config.getAIMoveDelay() && 
-                !localState.isClearingLines() && 
-                !localState.isGameOver()) {
-                
-                m_aiMoveTimer = 0.0f;
-                
-                // Ask AI what move to make
-                auto [rotation, column] = m_aiPlayer->chooseMove(localState);
-                
-                // Send rotation commands
-                int currentX = localState.pieceX();
-                for (int i = 0; i < rotation; ++i) {
-                    m_multiplayerEngine->sendInput(InputAction::ROTATE_CW);
-                }
-                
-                // Send movement commands
-                if (column < currentX) {
-                    // Move left
-                    for (int i = 0; i < currentX - column; ++i) {
-                        m_multiplayerEngine->sendInput(InputAction::MOVE_LEFT);
-                    }
-                } else if (column > currentX) {
-                    // Move right
-                    for (int i = 0; i < column - currentX; ++i) {
-                        m_multiplayerEngine->sendInput(InputAction::MOVE_RIGHT);
-                    }
-                }
-                
-                // Drop the piece
-                m_multiplayerEngine->sendInput(InputAction::HARD_DROP);
-            }
-        }
-        
-        // Check if someone won
-        int winner = m_multiplayerEngine->checkVictory();
-        if (winner != -1) {
-            m_currentMenuState = MenuState::GAME_OVER;
-            m_selectedOption = 0;
-        }
-    } else {
-        // Solo mode: normal update
-        // Check if game over and transition to game over menu
-        if (m_gameState.isGameOver() && m_currentMenuState == MenuState::NONE) {
-            m_currentMenuState = MenuState::GAME_OVER;
-            m_selectedOption = 0;
-            return;
-        }
-
-        // Update game state (piece falling)
+        // Update local game state
         m_gameState.update(deltaTime);
         
-        // Check if AI is controlling the player - if so, skip input processing
-        bool isAIControlling = false;
-        const auto* aiMode = dynamic_cast<const AIMode*>(m_gameState.getGameMode());
-        if (aiMode) {
-            // Game mode is AIMode - AI plays automatically
-            isAIControlling = true;
+        // Network sync timer
+        m_networkUpdateTimer += deltaTime;
+        if (m_networkUpdateTimer >= NETWORK_UPDATE_INTERVAL) {
+            m_networkUpdateTimer = 0.0f;
+            
+            // Send local state to opponent
+            if (m_networkManager->isConnected()) {
+                PacketData localData = gameStateToPacket(m_gameState);
+                m_networkManager->sendGameState(localData);
+                
+                // Receive opponent state
+                auto opponentData = m_networkManager->receiveOpponentState();
+                if (opponentData.has_value()) {
+                    packetToGameState(opponentData.value(), m_remoteGameState);
+                }
+            }
         }
         
-        // Only process input if AI is not controlling
-        if (!isAIControlling) {
-            // Check for immediate key presses (first press, no delay)
-            // This ensures rapid key presses are never missed
-            if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Left)) {
-                m_gameState.moveLeft();
-                m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Left);
-                m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
-            } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Right)) {
-                m_gameState.moveRight();
-                m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Right);
-                m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
-            } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Down)) {
-                m_gameState.softDrop();
-                m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Down);
-                m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
+        // Check if either player has lost
+        if (m_gameState.isGameOver() || m_remoteGameState.isGameOver()) {
+            if (m_remoteGameState.isGameOver() && !m_gameState.isGameOver()) {
+                m_localAIModeWinnerId = 0;
+                m_localAIModeWinnerName = "You";
+            } else if (m_gameState.isGameOver() && !m_remoteGameState.isGameOver()) {
+                m_localAIModeWinnerId = 1;
+                m_localAIModeWinnerName = "Opponent";
+            } else {
+                m_localAIModeWinnerId = -1;
+                m_localAIModeWinnerName = "";
             }
-            
-            // Process input with delay for held keys (throttled movement)
-            m_inputTimer += deltaTime;
-            if (m_inputTimer >= INPUT_DELAY) {
-                m_inputTimer = 0.0f;
-                processContinuousInput();
-            }
-            
-            // Process discrete input (rotation - no delay)
-            processDiscreteInput();
+            m_currentMenuState = MenuState::GAME_OVER;
+            m_selectedOption = 0;
         }
+        
+        return;
+    }
+
+    // Solo mode: normal update
+    // Check if game over and transition to game over menu
+    if (m_gameState.isGameOver() && m_currentMenuState == MenuState::NONE) {
+        m_currentMenuState = MenuState::GAME_OVER;
+        m_selectedOption = 0;
+        return;
+    }
+
+    // Update game state (piece falling)
+    m_gameState.update(deltaTime);
+    
+    // Check if AI is controlling the player - if so, skip input processing
+    bool isAIControlling = false;
+    const auto* aiMode = dynamic_cast<const AIMode*>(m_gameState.getGameMode());
+    if (aiMode) {
+        // Game mode is AIMode - AI plays automatically
+        isAIControlling = true;
+    }
+    
+    // Only process input if AI is not controlling
+    if (!isAIControlling) {
+        // Check for immediate key presses (first press, no delay)
+        // This ensures rapid key presses are never missed
+        if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Left)) {
+            m_gameState.moveLeft();
+            m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Left);
+            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
+        } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Right)) {
+            m_gameState.moveRight();
+            m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Right);
+            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
+        } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Down)) {
+            m_gameState.softDrop();
+            m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Down);
+            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
+        }
+        
+        // Process input with delay for held keys (throttled movement)
+        m_inputTimer += deltaTime;
+        if (m_inputTimer >= INPUT_DELAY) {
+            m_inputTimer = 0.0f;
+            processContinuousInput();
+        }
+        
+        // Process discrete input (rotation - no delay)
+        processDiscreteInput();
     }
 }
 
@@ -640,102 +532,6 @@ bool GameController::isGameOver() const {
     return m_gameState.isGameOver();
 }
 
-// Start hosting a multiplayer game
-void GameController::startHosting(unsigned short port) {
-    // Use default port from config if not specified
-    if (port == 0) {
-        port = NetworkConfig::getInstance().getPort();
-    }
-    
-    // Create multiplayer engine if we don't have one
-    if (!m_multiplayerEngine) {
-        m_multiplayerEngine = std::make_unique<MultiplayerEngine>("Host");
-    }
-    
-    // Load settings from config
-    auto& config = NetworkConfig::getInstance();
-    m_multiplayerEngine->setTargetLines(config.getDefaultTargetLines());
-    m_multiplayerEngine->enableScreenShare(config.isScreenShareEnabledRace());
-    
-    // Try to start hosting
-    if (m_multiplayerEngine->startHosting(port, MultiplayerEngine::MultiplayerGameMode::RACE)) {
-        m_isHosting = true;
-        m_gameState.reset();
-        // If AI mode was requested, enable it now
-        if (m_localPlayerAI && !m_aiPlayer) {
-            setLocalPlayerAI(true, m_localPlayerAIAdvanced);
-        }
-    }
-}
-
-// Connect to a server as a client
-void GameController::connectToServer(const std::string& serverIP, unsigned short port) {
-    // Create multiplayer engine if we don't have one
-    if (!m_multiplayerEngine) {
-        m_multiplayerEngine = std::make_unique<MultiplayerEngine>("Client");
-    }
-    
-    // Use default port from config if not specified
-    if (port == 0) {
-        port = NetworkConfig::getInstance().getPort();
-    }
-    
-    // Load settings from config
-    auto& config = NetworkConfig::getInstance();
-    m_multiplayerEngine->setTargetLines(config.getDefaultTargetLines());
-    m_multiplayerEngine->enableScreenShare(config.isScreenShareEnabledRace());
-    
-    // Try to connect
-    if (m_multiplayerEngine->connectToHost(serverIP, port, MultiplayerEngine::MultiplayerGameMode::RACE)) {
-        // Connection successful!
-        m_isHosting = false;
-        m_gameState.reset();
-        // If AI mode was requested, enable it now
-        if (m_localPlayerAI && !m_aiPlayer) {
-            setLocalPlayerAI(true, m_localPlayerAIAdvanced);
-        }
-    } else {
-        // Connection failed - go back to IP input screen
-        m_currentMenuState = MenuState::ENTER_IP;
-        m_selectedOption = 0;
-    }
-}
-
-// Disconnect from multiplayer
-void GameController::disconnectNetwork() {
-    if (m_multiplayerEngine) {
-        m_multiplayerEngine->disconnect();
-        m_multiplayerEngine.reset();  // Delete the multiplayer engine
-    }
-    m_isHosting = false;
-}
-
-// Check if we're hosting a game
-bool GameController::isHosting() const {
-    return m_isHosting && m_multiplayerEngine != nullptr;
-}
-
-// Check if we're connected as a client
-bool GameController::isConnected() const {
-    return !m_isHosting && m_multiplayerEngine != nullptr && m_multiplayerEngine->isConnected();
-}
-
-// Check if a client is connected (for host)
-bool GameController::isClientConnected() const {
-    if (m_isHosting && m_multiplayerEngine) {
-        return m_multiplayerEngine->isConnected();
-    }
-    return false;
-}
-
-// Check if we're in network mode (either multiplayer or local AI mode)
-bool GameController::isNetworkMode() const {
-    // Local AI mode counts as network mode for rendering purposes
-    if (m_localAIMode) return true;
-    // Otherwise check if we're actually connected
-    return m_multiplayerEngine != nullptr && m_multiplayerEngine->isConnected();
-}
-
 MenuState GameController::getMenuState() const {
     return m_currentMenuState;
 }
@@ -753,70 +549,12 @@ const MenuView& GameController::getMenuView() const {
     return m_menuView;
 }
 
-// Add a character to the IP address input field
-// Used when typing an IP address to connect
-void GameController::appendToIPInput(char c) {
-    // Limit input length to prevent overflow
-    if (m_serverIPInput.length() < 25) {
-        m_serverIPInput += c;
-    }
+int GameController::getWinnerId() const {
+    return m_localAIMode ? m_localAIModeWinnerId : -1;
 }
 
-// Remove the last character from the IP address input field (backspace)
-void GameController::removeLastIPChar() {
-    if (!m_serverIPInput.empty()) {
-        m_serverIPInput.pop_back();  // Remove last character
-    }
-}
-
-// Get the server's local IP address (for same-network play)
-// Returns format: "192.168.1.100" (just the IP, no port)
-std::string GameController::getServerLocalIP() const {
-    if (m_isHosting && m_multiplayerEngine) {
-        std::string info = m_multiplayerEngine->getHostInfo();  // Gets "IP:PORT"
-        // Extract IP part (everything before the colon)
-        size_t colonPos = info.find(':');
-        if (colonPos != std::string::npos) {
-            return info.substr(0, colonPos);  // Return just the IP
-        }
-        return info;  // No colon found, return as-is
-    }
-    return "";
-}
-
-// Get the server's public IP address (for internet play)
-// Returns format: "123.45.67.89:53000" (IP and port)
-std::string GameController::getServerPublicIP() const {
-    if (m_isHosting && m_multiplayerEngine) {
-        return m_multiplayerEngine->getPublicHostInfo();  // Returns "IP:PORT"
-    }
-    return "";
-}
-
-// Get the last connection error message (if connection failed)
-// Useful for showing error messages to the user
-std::string GameController::getLastConnectionError() const {
-    if (m_multiplayerEngine && m_multiplayerEngine->getNetworkSession()) {
-        return m_multiplayerEngine->getNetworkSession()->getLastError();
-    }
-    return "";
-}
-
-// Get network latency in milliseconds (how long messages take to travel)
-// Lower is better - shows connection quality
-uint32_t GameController::getNetworkLatency() const {
-    if (m_multiplayerEngine) {
-        return m_multiplayerEngine->getLatency();
-    }
-    return 0;
-}
-
-// Get the name of the remote player (in multiplayer)
-std::string GameController::getRemotePlayerName() const {
-    if (m_multiplayerEngine) {
-        return m_multiplayerEngine->getRemotePlayerName();
-    }
-    return "";
+std::string GameController::getWinnerName() const {
+    return m_localAIMode ? m_localAIModeWinnerName : "";
 }
 
 // Enable or disable AI for the local player
@@ -836,7 +574,7 @@ void GameController::setLocalPlayerAI(bool enabled, bool useAdvanced) {
     }
 }
 
-// Enable or disable AI for the remote player (in local AI mode)
+// Enable or disable AI for the second player (in local AI mode)
 void GameController::setRemotePlayerAI(bool enabled, bool useAdvanced) {
     m_remotePlayerAI = enabled;
     m_remotePlayerAIAdvanced = useAdvanced;
@@ -859,11 +597,8 @@ void GameController::makeAIMove(GameState& gameState, AIPlayer* aiPlayer, float&
         return;
     }
     
-    // Get config settings
-    auto& config = NetworkConfig::getInstance();
-    
     // Check if enough time has passed and game is ready
-    if (moveTimer >= config.getAIMoveDelay() && 
+    if (moveTimer >= AI_MOVE_DELAY && 
         !gameState.isClearingLines() && 
         !gameState.isGameOver()) {
         
@@ -931,12 +666,97 @@ void GameController::updateLocalPlayerInAIMode(float deltaTime) {
     }
 }
 
-// Update remote player in AI mode (always AI)
+// Update second player in AI mode (always AI)
 void GameController::updateRemotePlayerInAIMode(float deltaTime) {
     if (m_remotePlayerAI && m_remoteAIPlayer) {
-        // Remote player is AI - make AI move
+        // Second player is AI - make AI move
         m_remoteAIMoveTimer += deltaTime;
         makeAIMove(m_remoteGameState, m_remoteAIPlayer.get(), m_remoteAIMoveTimer);
     }
 }
 
+// Network helper: Convert GameState to PacketData for transmission
+PacketData GameController::gameStateToPacket(const GameState& state) {
+    PacketData packet;
+    
+    // Copy grid data from board
+    const Board& board = state.board();
+    for (int y = 0; y < 21; ++y) {
+        for (int x = 0; x < 10; ++x) {
+            packet.grid[y][x] = static_cast<int>(board.getCell(x, y));
+        }
+    }
+    
+    // Current piece info
+    packet.currentPieceType = static_cast<int>(state.currentPiece().getType());
+    packet.currentPieceX = state.pieceX();
+    packet.currentPieceY = state.pieceY();
+    packet.currentPieceRotation = static_cast<int>(state.currentPiece().getRotationState());
+    
+    // Game stats (no next piece in packet - not needed for opponent view)
+    packet.score = state.score();
+    packet.level = state.level();
+    packet.isGameOver = state.isGameOver();
+    
+    return packet;
+}
+
+// Network helper: Apply PacketData to GameState
+void GameController::packetToGameState(const PacketData& packet, GameState& state) {
+    // Sync the board by creating a temporary board with received grid data
+    Board tempBoard;
+    for (int y = 0; y < 21; ++y) {
+        for (int x = 0; x < 10; ++x) {
+            tempBoard.setCell(x, y, packet.grid[y][x]);
+        }
+    }
+    state.syncBoard(tempBoard);
+    
+    // Note: We don't sync the current piece position for the opponent's view
+    // The board data already includes locked pieces, and we render opponent's
+    // falling piece separately if needed
+}
+
+// LAN Network methods
+void GameController::startHosting(unsigned short port) {
+    if (!m_networkManager) {
+        m_networkManager = std::make_unique<NetworkManager>();
+    }
+    
+    if (m_networkManager->host(port)) {
+        m_networkMode = true;
+        m_localAIMode = false;
+        m_gameState.reset();
+        m_remoteGameState.reset();
+        m_currentMenuState = MenuState::NONE;  // Wait for connection in-game
+    }
+}
+
+void GameController::connectToHost(const std::string& ip, unsigned short port) {
+    if (!m_networkManager) {
+        m_networkManager = std::make_unique<NetworkManager>();
+    }
+    
+    if (m_networkManager->connect(ip, port)) {
+        m_networkMode = true;
+        m_localAIMode = false;
+        m_gameState.reset();
+        m_remoteGameState.reset();
+        m_currentMenuState = MenuState::NONE;  // Start playing
+    }
+}
+
+void GameController::disconnectNetwork() {
+    if (m_networkManager) {
+        m_networkManager->disconnect();
+    }
+    m_networkMode = false;
+}
+
+bool GameController::isNetworkConnected() const {
+    return m_networkMode && m_networkManager && m_networkManager->isConnected();
+}
+
+std::string GameController::getLocalIP() const {
+    return NetworkManager::getLocalIP();
+}
