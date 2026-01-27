@@ -13,6 +13,7 @@ enum class MenuState {
     LAN_MULTIPLAYER,
     HOST_GAME,
     JOIN_GAME,
+    NETWORK_READY,  // Both players connected, waiting for ready confirmation
     PAUSE_MENU,
     GAME_OVER,
     NONE  // No menu active
@@ -46,6 +47,9 @@ public:
 
     // Render join game menu (enter IP)
     void renderJoinGame(sf::RenderWindow& window, int selectedOption, const std::string& ipInput) const;
+
+    // Render network ready menu (waiting for both players to confirm ready)
+    void renderNetworkReady(sf::RenderWindow& window, int selectedOption, bool localReady, bool remoteReady) const;
 
     // Render pause menu
     void renderPauseMenu(sf::RenderWindow& window, int selectedOption) const;

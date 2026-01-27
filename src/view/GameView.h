@@ -14,7 +14,8 @@ public:
                const MenuView& menuView, MenuState menuState, int selectedOption,
                bool isMultiplayer = false, const GameState* remoteState = nullptr,
                int winnerId = -1, const std::string& winnerName = "",
-               bool isNetworkConnected = false, const std::string& localIP = "");
+               bool isNetworkConnected = false, const std::string& localIP = "",
+               bool localPlayerReady = false, bool remotePlayerReady = false);
 
     // Render just the game (without menu overlay)
     void renderGame(sf::RenderWindow& window, const GameState& state, 
@@ -22,6 +23,12 @@ public:
     
     // Set IP input for JOIN_GAME menu
     void setIPInput(const std::string& ipInput) { m_ipInput = ipInput; }
+    
+    // Set ready status for NETWORK_READY menu
+    void setNetworkReadyStatus(bool localReady, bool remoteReady) {
+        m_localPlayerReady = localReady;
+        m_remotePlayerReady = remoteReady;
+    }
 
 private:
     static constexpr int CellSize = 30;
@@ -31,6 +38,8 @@ private:
     sf::Font m_font;
     bool m_fontLoaded;
     std::string m_ipInput;  // For JOIN_GAME menu
+    bool m_localPlayerReady;  // For NETWORK_READY menu
+    bool m_remotePlayerReady;  // For NETWORK_READY menu
 
     sf::Color colorForId(int colorId) const;
 

@@ -13,6 +13,7 @@ struct PacketData {
     int32_t score;
     int32_t level;
     bool isGameOver;
+    bool isReady;  // Player ready status
     
     PacketData() {
         for (int y = 0; y < 21; y++) {
@@ -27,6 +28,7 @@ struct PacketData {
         score = 0;
         level = 1;
         isGameOver = false;
+        isReady = false;
     }
 };
 

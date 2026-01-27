@@ -49,6 +49,8 @@ public:
     bool isNetworkMultiplayerMode() const { return m_networkMode; }
     int getWinnerId() const;
     std::string getWinnerName() const;
+    bool getLocalPlayerReady() const { return m_localPlayerReady; }
+    bool getRemotePlayerReady() const { return m_remotePlayerReady; }
     
     // LAN Network methods
     void startHosting(unsigned short port = 53000);
@@ -83,6 +85,8 @@ private:
     float m_networkUpdateTimer;
     static constexpr float NETWORK_UPDATE_INTERVAL = 0.016f; // ~60 updates/sec
     std::string m_ipInput;  // For JOIN_GAME menu: IP address input
+    bool m_localPlayerReady;  // Local player ready status for network games
+    bool m_remotePlayerReady;  // Remote player ready status for network games
     
     // AI for multiplayer and local modes
     bool m_localPlayerAI;

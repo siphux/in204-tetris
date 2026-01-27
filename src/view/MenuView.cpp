@@ -204,6 +204,38 @@ void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) con
     drawMenuOption(window, "Main Menu", optionY + OPTION_SPACING, selectedOption == 1);
 }
 
+void MenuView::renderNetworkReady(sf::RenderWindow& window, int selectedOption, bool localReady, bool remoteReady) const {
+    // Draw background
+    sf::RectangleShape background({static_cast<float>(window.getSize().x),
+                                  static_cast<float>(window.getSize().y)});
+    background.setFillColor(sf::Color::Black);
+    window.draw(background);
+
+    // Draw title
+    drawCenteredText(window, "Ready to Play?", 100.0f, TITLE_SIZE, sf::Color::White);
+
+    // Show local ready status
+    std::string localStatus = localReady ? "READY" : "NOT READY";
+    sf::Color localColor = localReady ? sf::Color::Green : sf::Color::Red;
+    drawCenteredText(window, "You: " + localStatus, 220.0f, OPTION_SIZE, localColor);
+
+    // Show opponent ready status
+    std::string remoteStatus = remoteReady ? "READY" : "NOT READY";
+    sf::Color remoteColor = remoteReady ? sf::Color::Green : sf::Color::Red;
+    drawCenteredText(window, "Opponent: " + remoteStatus, 280.0f, OPTION_SIZE, remoteColor);
+
+    // Draw status message
+    if (localReady && remoteReady) {
+        drawCenteredText(window, "Both players ready! Starting game...", 360.0f, OPTION_SIZE - 4, sf::Color::Cyan);
+    } else if (localReady) {
+        drawCenteredText(window, "Waiting for opponent...", 360.0f, OPTION_SIZE - 4, sf::Color::Yellow);
+    }
+
+    // Draw options
+    drawMenuOption(window, localReady ? "Unready" : "Ready", 420.0f, selectedOption == 0);
+    drawMenuOption(window, "Back", 420.0f + OPTION_SPACING, selectedOption == 1);
+}
+
 void MenuView::renderGameOver(sf::RenderWindow& window, int player1Score, int player1Lines, int selectedOption,
                              bool isMultiplayer, int winnerId, const std::string& winnerName,
                              int player2Score, int player2Lines) const {
@@ -263,6 +295,8 @@ int MenuView::getOptionCount(MenuState menuState) const {
             return 0; // No options, waiting for connection
         case MenuState::JOIN_GAME:
             return 2; // Connect, Back
+        case MenuState::NETWORK_READY:
+            return 2; // Ready, Back
         case MenuState::PAUSE_MENU:
             return 2; // Resume, Main Menu
         case MenuState::GAME_OVER:

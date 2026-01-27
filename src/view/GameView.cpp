@@ -10,7 +10,7 @@
 // This includes the board, pieces, UI, menus, etc.
 
 // Initialize the view - try to load a font for text rendering
-GameView::GameView() : m_fontLoaded(false) {
+GameView::GameView() : m_fontLoaded(false), m_localPlayerReady(false), m_remotePlayerReady(false) {
     // Try to load a system font for displaying text
     // Option 1: Try DejaVu Sans (common on Linux)
     if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
@@ -32,7 +32,12 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
                       const MenuView& menuView, MenuState menuState, int selectedOption,
                       bool isMultiplayer, const GameState* remoteState,
                       int winnerId, const std::string& winnerName,
-                      bool isNetworkConnected, const std::string& localIP) {
+                      bool isNetworkConnected, const std::string& localIP,
+                      bool localPlayerReady, bool remotePlayerReady) {
+    // Store ready status for NETWORK_READY menu rendering
+    m_localPlayerReady = localPlayerReady;
+    m_remotePlayerReady = remotePlayerReady;
+    
     // Clear the window with black background
     window.clear(sf::Color::Black);
 
@@ -65,6 +70,9 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
                 break;
             case MenuState::JOIN_GAME:
                 menuView.renderJoinGame(window, selectedOption, m_ipInput);
+                break;
+            case MenuState::NETWORK_READY:
+                menuView.renderNetworkReady(window, selectedOption, m_localPlayerReady, m_remotePlayerReady);
                 break;
             case MenuState::PAUSE_MENU:
                 menuView.renderPauseMenu(window, selectedOption);

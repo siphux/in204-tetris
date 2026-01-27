@@ -116,6 +116,7 @@ bool NetworkManager::sendGameState(const PacketData& data) {
     packet << data.score;
     packet << data.level;
     packet << data.isGameOver;
+    packet << data.isReady;
     
     auto status = getActiveSocket()->send(packet);
     
@@ -158,6 +159,7 @@ std::optional<PacketData> NetworkManager::receiveOpponentState() {
     packet >> data.score;
     packet >> data.level;
     packet >> data.isGameOver;
+    packet >> data.isReady;
     
     return data;
 }

@@ -75,7 +75,8 @@ int main() {
                    controller.getMenuState(), controller.getSelectedOption(),
                    isMultiplayer, remoteState,
                    controller.getWinnerId(), controller.getWinnerName(),
-                   isNetworkConnected, localIP);
+                   isNetworkConnected, localIP,
+                   controller.getLocalPlayerReady(), controller.getRemotePlayerReady());
         
         // Update GameView's IP input for rendering
         view.setIPInput(controller.getIPInput());

@@ -23,6 +23,8 @@ GameController::GameController()
       m_networkMode(false),                  // Not in network mode
       m_networkUpdateTimer(0.0f),            // Network update timer
       m_ipInput(""),                         // Empty IP input
+      m_localPlayerReady(false),             // Local player not ready
+      m_remotePlayerReady(false),            // Remote player not ready
       m_localPlayerAI(false),                // Local player is human by default
       m_localPlayerAIAdvanced(false),        // AI difficulty
       m_remotePlayerAI(false),               // Second player is human by default
@@ -129,6 +131,14 @@ void GameController::handleEvent(const sf::Event& event) {
 
 // Handle keyboard input when in a menu
 void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
+    // Special handling for Escape in HOST_GAME menu
+    if (m_currentMenuState == MenuState::HOST_GAME && key == sf::Keyboard::Key::Escape) {
+        disconnectNetwork();
+        m_currentMenuState = MenuState::LAN_MULTIPLAYER;
+        m_selectedOption = 0;
+        return;
+    }
+    
     // Get how many options are in the current menu
     int optionCount = m_menuView.getOptionCount(m_currentMenuState);
     
@@ -209,8 +219,7 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             if (m_selectedOption == 0) {
                 // Host Game
                 startHosting();
-                // startHosting() already sets m_currentMenuState = MenuState::NONE,
-                // so the game starts immediately
+                m_currentMenuState = MenuState::HOST_GAME;
                 m_selectedOption = 0;
             } else if (m_selectedOption == 1) {
                 // Join Game
@@ -222,6 +231,8 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_currentMenuState = MenuState::MULTIPLAYER_MENU;
                 m_selectedOption = 1;
             }
+        } else if (m_currentMenuState == MenuState::HOST_GAME) {
+            // No selectable options in HOST_GAME - Escape handled above
         } else if (m_currentMenuState == MenuState::JOIN_GAME) {
             if (m_selectedOption == 0) {
                 // Connect
@@ -234,6 +245,17 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 // Back
                 m_currentMenuState = MenuState::LAN_MULTIPLAYER;
                 m_selectedOption = 1;
+            }
+        } else if (m_currentMenuState == MenuState::NETWORK_READY) {
+            if (m_selectedOption == 0) {
+                // Ready button
+                m_localPlayerReady = !m_localPlayerReady;  // Toggle ready state
+            } else if (m_selectedOption == 1) {
+                // Back button - disconnect
+                m_localPlayerReady = false;
+                disconnectNetwork();
+                m_currentMenuState = MenuState::LAN_MULTIPLAYER;
+                m_selectedOption = 0;
             }
         } else if (m_currentMenuState == MenuState::LOCAL_MULTIPLAYER) {
             if (m_selectedOption == 0) {
@@ -323,8 +345,18 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
 }
 
 void GameController::update(float deltaTime) {
-    // If we're in a menu, don't update game state
-    if (m_currentMenuState != MenuState::NONE) {
+    // If we're in a menu, don't update game state (unless we're networking)
+    if (m_currentMenuState != MenuState::NONE && !(m_networkMode && m_networkManager)) {
+        return;
+    }
+    
+    // Handle HOST_GAME menu: check if client connected, transition to NETWORK_READY
+    if (m_currentMenuState == MenuState::HOST_GAME && m_networkMode && m_networkManager) {
+        if (m_networkManager->isConnected()) {
+            m_localPlayerReady = false;
+            m_remotePlayerReady = false;
+            m_currentMenuState = MenuState::NETWORK_READY;
+        }
         return;
     }
 
@@ -378,6 +410,41 @@ void GameController::update(float deltaTime) {
     if (m_networkMode && m_networkManager) {
         // Update network (accept connections if hosting)
         m_networkManager->update();
+        
+        // If we're in NETWORK_READY state, wait for both players to be ready
+        if (m_currentMenuState == MenuState::NETWORK_READY) {
+            // Sync ready status over network
+            m_networkUpdateTimer += deltaTime;
+            if (m_networkUpdateTimer >= NETWORK_UPDATE_INTERVAL) {
+                m_networkUpdateTimer = 0.0f;
+                
+                if (m_networkManager->isConnected()) {
+                    // Send local ready status (empty game state with just ready flag)
+                    PacketData readyPacket = gameStateToPacket(m_gameState);
+                    readyPacket.isReady = m_localPlayerReady;
+                    m_networkManager->sendGameState(readyPacket);
+                    
+                    // Receive opponent ready status
+                    auto opponentData = m_networkManager->receiveOpponentState();
+                    if (opponentData.has_value()) {
+                        m_remotePlayerReady = opponentData.value().isReady;
+                    }
+                }
+            }
+            
+            // Check if both players are ready
+            if (m_localPlayerReady && m_remotePlayerReady && m_networkManager->isConnected()) {
+                // Start the game
+                m_gameState.reset();
+                m_remoteGameState.reset();
+                m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
+                m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
+                m_currentMenuState = MenuState::NONE;
+                m_selectedOption = 0;
+            }
+            
+            return;
+        }
         
         // Update local game state
         m_gameState.update(deltaTime);
@@ -742,9 +809,9 @@ void GameController::startHosting(unsigned short port) {
     if (m_networkManager->host(port)) {
         m_networkMode = true;
         m_localAIMode = false;
-        m_gameState.reset();
-        m_remoteGameState.reset();
-        m_currentMenuState = MenuState::NONE;  // Wait for connection in-game
+        m_localPlayerReady = false;
+        m_remotePlayerReady = false;
+        m_currentMenuState = MenuState::HOST_GAME;  // Show waiting for connection
     }
 }
 
@@ -756,9 +823,9 @@ void GameController::connectToHost(const std::string& ip, unsigned short port) {
     if (m_networkManager->connect(ip, port)) {
         m_networkMode = true;
         m_localAIMode = false;
-        m_gameState.reset();
-        m_remoteGameState.reset();
-        m_currentMenuState = MenuState::NONE;  // Start playing
+        m_localPlayerReady = false;
+        m_remotePlayerReady = false;
+        m_currentMenuState = MenuState::NETWORK_READY;  // Go to ready menu
     }
 }
 
