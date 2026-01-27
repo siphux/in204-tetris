@@ -129,14 +129,6 @@ void GameController::handleEvent(const sf::Event& event) {
 
 // Handle keyboard input when in a menu
 void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
-    // Special handling for Escape in HOST_GAME menu
-    if (m_currentMenuState == MenuState::HOST_GAME && key == sf::Keyboard::Key::Escape) {
-        disconnectNetwork();
-        m_currentMenuState = MenuState::LAN_MULTIPLAYER;
-        m_selectedOption = 0;
-        return;
-    }
-    
     // Get how many options are in the current menu
     int optionCount = m_menuView.getOptionCount(m_currentMenuState);
     
@@ -217,7 +209,8 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             if (m_selectedOption == 0) {
                 // Host Game
                 startHosting();
-                m_currentMenuState = MenuState::HOST_GAME;
+                // startHosting() already sets m_currentMenuState = MenuState::NONE,
+                // so the game starts immediately
                 m_selectedOption = 0;
             } else if (m_selectedOption == 1) {
                 // Join Game
@@ -229,8 +222,6 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_currentMenuState = MenuState::MULTIPLAYER_MENU;
                 m_selectedOption = 1;
             }
-        } else if (m_currentMenuState == MenuState::HOST_GAME) {
-            // No selectable options in HOST_GAME - Escape handled above
         } else if (m_currentMenuState == MenuState::JOIN_GAME) {
             if (m_selectedOption == 0) {
                 // Connect
