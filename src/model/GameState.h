@@ -70,6 +70,10 @@ public:
     // Network synchronization: Sync board state from serialized data
     // This allows NetworkManager to update the board for multiplayer sync
     void syncBoard(const Board& board);
+    
+    // Network synchronization: Sync opponent's falling piece position
+    // Used to display opponent's current piece on their side of the board
+    void syncPiecePosition(int x, int y, int rotation);
 
 private:
     Board m_board;

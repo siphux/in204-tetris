@@ -24,8 +24,13 @@ bool NetworkManager::host(unsigned short port) {
         return false;
     }
     
-    std::cout << "Hosting on port " << port << std::endl;
+    std::string localIP = getLocalIP();
+    std::cout << "\n=== SERVER STARTED ===" << std::endl;
+    std::cout << "IP Address: " << localIP << std::endl;
+    std::cout << "Port: " << port << std::endl;
+    std::cout << "Share this with your friend: " << localIP << ":" << port << std::endl;
     std::cout << "Waiting for opponent to connect..." << std::endl;
+    std::cout << "==================\n" << std::endl;
     return true;
 }
 

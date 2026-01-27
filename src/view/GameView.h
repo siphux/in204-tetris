@@ -3,6 +3,8 @@
 #include "../model/GameState.h"
 #include "../model/GameMode.h"
 #include "MenuView.h"
+#include "TextureManager.h"
+#include <memory>
 
 // Handles rendering the game state to the window.
 class GameView {
@@ -15,7 +17,8 @@ public:
                bool isMultiplayer = false, const GameState* remoteState = nullptr,
                int winnerId = -1, const std::string& winnerName = "",
                bool isNetworkConnected = false, const std::string& localIP = "",
-               bool localPlayerReady = false, bool remotePlayerReady = false);
+               bool localPlayerReady = false, bool remotePlayerReady = false,
+               float musicVolume = 50.0f);
 
     // Render just the game (without menu overlay)
     void renderGame(sf::RenderWindow& window, const GameState& state, 
@@ -40,6 +43,7 @@ private:
     std::string m_ipInput;  // For JOIN_GAME menu
     bool m_localPlayerReady;  // For NETWORK_READY menu
     bool m_remotePlayerReady;  // For NETWORK_READY menu
+    std::unique_ptr<TextureManager> m_textureManager;  // For block textures
 
     sf::Color colorForId(int colorId) const;
 

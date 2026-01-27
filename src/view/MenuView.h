@@ -15,6 +15,7 @@ enum class MenuState {
     JOIN_GAME,
     NETWORK_READY,  // Both players connected, waiting for ready confirmation
     PAUSE_MENU,
+    SETTINGS_MENU,
     GAME_OVER,
     NONE  // No menu active
 };
@@ -52,7 +53,10 @@ public:
     void renderNetworkReady(sf::RenderWindow& window, int selectedOption, bool localReady, bool remoteReady) const;
 
     // Render pause menu
-    void renderPauseMenu(sf::RenderWindow& window, int selectedOption) const;
+    void renderPauseMenu(sf::RenderWindow& window, int selectedOption, float musicVolume) const;
+
+    // Render settings menu
+    void renderSettingsMenu(sf::RenderWindow& window, int selectedOption, float musicVolume) const;
 
     // Render game over screen with final score and lines cleared
     void renderGameOver(sf::RenderWindow& window, int player1Score, int player1Lines, int selectedOption,

@@ -2,6 +2,7 @@
 #include "../model/GameState.h"
 #include "InputHandler.h"
 #include "../view/MenuView.h"
+#include "../view/MusicManager.h"
 #include "../ai/AIPlayer.h"
 #include "../network/NetworkManager.h"
 #include <SFML/Window/Event.hpp>
@@ -60,6 +61,10 @@ public:
     std::string getLocalIP() const;
     std::string getIPInput() const { return m_ipInput; }
     
+    // Volume control
+    float getMusicVolume() const { return m_musicVolume; }
+    void setMusicVolume(float volume);
+    
     // Local AI mode: AI vs AI and Player vs AI support
     void setLocalPlayerAI(bool enabled, bool useAdvanced = true);
     bool isLocalPlayerAI() const { return m_localPlayerAI; }
@@ -78,6 +83,10 @@ private:
     MenuState m_currentMenuState;
     int m_selectedOption;
     bool m_shouldExit;
+    float m_musicVolume;
+    
+    // Music manager
+    std::unique_ptr<MusicManager> m_musicManager;
     
     // Network multiplayer
     std::unique_ptr<NetworkManager> m_networkManager;

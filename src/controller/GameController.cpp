@@ -1,9 +1,9 @@
 #include "GameController.h"
 #include "../model/LevelBasedMode.h"
-#include "../model/DeathrunMode.h"
 #include "../model/AIMode.h"
 #include "../ai/SimpleAI.h"
 #include "../ai/AdvancedAI.h"
+#include <iostream>
 
 namespace {
 constexpr int TARGET_LINES = 40;
@@ -19,6 +19,7 @@ GameController::GameController()
             m_currentMenuState(MenuState::MAIN_MENU),  // Start at main menu
       m_selectedOption(0),                   // First option selected
       m_shouldExit(false),                   // Don't exit yet
+      m_musicVolume(50.0f),                  // Default 50% volume
       m_networkManager(nullptr),             // No network by default
       m_networkMode(false),                  // Not in network mode
       m_networkUpdateTimer(0.0f),            // Network update timer
@@ -33,7 +34,13 @@ GameController::GameController()
       m_aiMoveTimer(0.0f),                   // Timer for AI moves
       m_remoteAIMoveTimer(0.0f),             // Timer for second player AI moves
       m_localAIModeWinnerId(-1),             // No winner yet
-      m_localAIModeWinnerName("") {}         // No winner name yet
+      m_localAIModeWinnerName("") {          // No winner name yet
+    // Initialize music manager
+    m_musicManager = std::make_unique<MusicManager>();
+    if (m_musicManager->initialize()) {
+        m_musicManager->play();
+    }
+}
 
 // Clean up when controller is destroyed
 GameController::~GameController() = default;
@@ -139,6 +146,21 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
         return;
     }
     
+    // Handle volume slider left/right in pause and settings menus
+    // Must be BEFORE up/down navigation to prevent conflicts
+    if ((m_currentMenuState == MenuState::PAUSE_MENU || m_currentMenuState == MenuState::SETTINGS_MENU) && 
+        m_selectedOption == 0) {
+        if (key == sf::Keyboard::Key::Left) {
+            m_musicVolume = std::max(0.0f, m_musicVolume - 5.0f);
+            setMusicVolume(m_musicVolume);
+            return;  // Don't process as menu navigation
+        } else if (key == sf::Keyboard::Key::Right) {
+            m_musicVolume = std::min(100.0f, m_musicVolume + 5.0f);
+            setMusicVolume(m_musicVolume);
+            return;  // Don't process as menu navigation
+        }
+    }
+    
     // Get how many options are in the current menu
     int optionCount = m_menuView.getOptionCount(m_currentMenuState);
     
@@ -167,8 +189,18 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_currentMenuState = MenuState::MULTIPLAYER_MENU;
                 m_selectedOption = 0;
             } else if (m_selectedOption == 2) {
+                // Settings
+                m_currentMenuState = MenuState::SETTINGS_MENU;
+                m_selectedOption = 0;
+            } else if (m_selectedOption == 3) {
                 // Exit
                 m_shouldExit = true;
+            }
+        } else if (m_currentMenuState == MenuState::SETTINGS_MENU) {
+            if (m_selectedOption == 1) {
+                // Back
+                m_currentMenuState = MenuState::MAIN_MENU;
+                m_selectedOption = 0;
             }
         } else if (m_currentMenuState == MenuState::MODE_SELECTION) {
             if (m_selectedOption == 0) {
@@ -176,14 +208,10 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 1) {
-                // Deathrun Mode
-                m_gameState.setGameMode(std::make_unique<DeathrunMode>());
-                m_currentMenuState = MenuState::NONE;
-            } else if (m_selectedOption == 2) {
                 // AI Mode - go to AI selection submenu
                 m_currentMenuState = MenuState::AI_SELECTION;
                 m_selectedOption = 0;
-            } else if (m_selectedOption == 3) {
+            } else if (m_selectedOption == 2) {
                 // Back
                 m_currentMenuState = MenuState::MAIN_MENU;
                 m_selectedOption = 0;
@@ -288,10 +316,10 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 m_selectedOption = 0;
             }
         } else if (m_currentMenuState == MenuState::PAUSE_MENU) {
-            if (m_selectedOption == 0) {
+            if (m_selectedOption == 1) {
                 // Resume
                 m_currentMenuState = MenuState::NONE;
-            } else if (m_selectedOption == 1) {
+            } else if (m_selectedOption == 2) {
                 // Solo mode or local AI mode: Main Menu - reset all AI state
                 m_localAIMode = false;
                 m_localPlayerAI = false;
@@ -341,10 +369,28 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
     } else if (key == sf::Keyboard::Key::Escape && m_currentMenuState == MenuState::PAUSE_MENU) {
         // Resume game with Escape
         m_currentMenuState = MenuState::NONE;
+    } else if (key == sf::Keyboard::Key::Escape && m_currentMenuState == MenuState::SETTINGS_MENU) {
+        // Back to main menu with Escape
+        m_currentMenuState = MenuState::MAIN_MENU;
+        m_selectedOption = 0;
     }
 }
 
 void GameController::update(float deltaTime) {
+    // Update music manager to handle looping
+    if (m_musicManager) {
+        m_musicManager->update();
+        
+        // Switch music based on game state
+        if (m_currentMenuState == MenuState::NONE) {
+            // We're playing - use game music
+            m_musicManager->playTrack(MusicTrack::GAME);
+        } else {
+            // We're in a menu - use menu music
+            m_musicManager->playTrack(MusicTrack::MENU);
+        }
+    }
+    
     // If we're in a menu, don't update game state (unless we're networking)
     if (m_currentMenuState != MenuState::NONE && !(m_networkMode && m_networkManager)) {
         return;
@@ -489,6 +535,12 @@ void GameController::update(float deltaTime) {
                 if (opponentData.has_value()) {
                     packetToGameState(opponentData.value(), m_remoteGameState);
                 }
+            } else {
+                // Connection was lost during gameplay
+                m_currentMenuState = MenuState::PAUSE_MENU;
+                m_selectedOption = 0;
+                m_networkMode = false;
+                std::cerr << "Connection to opponent lost!" << std::endl;
             }
         }
         
@@ -795,9 +847,8 @@ void GameController::packetToGameState(const PacketData& packet, GameState& stat
     }
     state.syncBoard(tempBoard);
     
-    // Note: We don't sync the current piece position for the opponent's view
-    // The board data already includes locked pieces, and we render opponent's
-    // falling piece separately if needed
+    // Sync opponent's falling piece position
+    state.syncPiecePosition(packet.currentPieceX, packet.currentPieceY, packet.currentPieceRotation);
 }
 
 // LAN Network methods
@@ -842,4 +893,11 @@ bool GameController::isNetworkConnected() const {
 
 std::string GameController::getLocalIP() const {
     return NetworkManager::getLocalIP();
+}
+
+void GameController::setMusicVolume(float volume) {
+    m_musicVolume = std::max(0.0f, std::min(100.0f, volume));
+    if (m_musicManager) {
+        m_musicManager->setVolume(m_musicVolume);
+    }
 }

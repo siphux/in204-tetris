@@ -1,6 +1,5 @@
 #include "GameView.h"
 #include "../model/LevelBasedMode.h"
-#include "../model/DeathrunMode.h"
 #include "../model/AIMode.h"
 #include <algorithm>
 #include <cmath>
@@ -11,6 +10,9 @@
 
 // Initialize the view - try to load a font for text rendering
 GameView::GameView() : m_fontLoaded(false), m_localPlayerReady(false), m_remotePlayerReady(false) {
+    // Initialize texture manager for block textures
+    m_textureManager = std::make_unique<TextureManager>();
+    
     // Try to load a system font for displaying text
     // Option 1: Try DejaVu Sans (common on Linux)
     if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
@@ -33,7 +35,7 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
                       bool isMultiplayer, const GameState* remoteState,
                       int winnerId, const std::string& winnerName,
                       bool isNetworkConnected, const std::string& localIP,
-                      bool localPlayerReady, bool remotePlayerReady) {
+                      bool localPlayerReady, bool remotePlayerReady, float musicVolume) {
     // Store ready status for NETWORK_READY menu rendering
     m_localPlayerReady = localPlayerReady;
     m_remotePlayerReady = remotePlayerReady;
@@ -75,7 +77,10 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
                 menuView.renderNetworkReady(window, selectedOption, m_localPlayerReady, m_remotePlayerReady);
                 break;
             case MenuState::PAUSE_MENU:
-                menuView.renderPauseMenu(window, selectedOption);
+                menuView.renderPauseMenu(window, selectedOption, musicVolume);
+                break;
+            case MenuState::SETTINGS_MENU:
+                menuView.renderSettingsMenu(window, selectedOption, musicVolume);
                 break;
             case MenuState::GAME_OVER: {
                 int player1Lines = 0;
@@ -195,15 +200,23 @@ void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const Gam
                 float pulse = 0.5f + 0.5f * std::sin(animationProgress * 3.14159f * 4.0f); // Pulsation rapide
                 unsigned char alpha = static_cast<unsigned char>(255 * (1.0f - animationProgress) * pulse);
                 cell.setFillColor(sf::Color(255, 255, 255, alpha)); // Blanc qui disparaît avec pulsation
+                cell.setPosition({boardX + static_cast<float>(x * CellSize),
+                                  boardY + static_cast<float>((y - 1) * CellSize)});
+                window.draw(cell);
             } else if (value == 0) {
                 cell.setFillColor(sf::Color(30, 30, 30)); // Vide
+                cell.setPosition({boardX + static_cast<float>(x * CellSize),
+                                  boardY + static_cast<float>((y - 1) * CellSize)});
+                window.draw(cell);
             } else {
-                cell.setFillColor(colorForId(value)); // Couleur normale
+                // Draw textured block
+                sf::Sprite blockSprite(m_textureManager->getBlockTexture(value));
+                blockSprite.setScale({static_cast<float>(CellSize - 1) / 32.0f,
+                                    static_cast<float>(CellSize - 1) / 32.0f});
+                blockSprite.setPosition({boardX + static_cast<float>(x * CellSize),
+                                        boardY + static_cast<float>((y - 1) * CellSize)});
+                window.draw(blockSprite);
             }
-            
-            cell.setPosition({boardX + static_cast<float>(x * CellSize),
-                              boardY + static_cast<float>((y - 1) * CellSize)});
-            window.draw(cell);
         }
     }
 
@@ -227,31 +240,37 @@ void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state
     float boardX = BoardOffsetX + offsetX;
     float boardY = BoardOffsetY + offsetY;
 
-    sf::RectangleShape block;
-    block.setSize(sf::Vector2f(static_cast<float>(CellSize - 1),
-                               static_cast<float>(CellSize - 1)));
-    block.setFillColor(colorForId(piece.getColorId()));
-    // Add outline to current piece for better visibility
-    block.setOutlineThickness(1.0f);
-    block.setOutlineColor(sf::Color(255, 255, 255, 128));
-
     // Draw Ghost Piece
     int ghostY = state.getGhostY();
-    sf::RectangleShape ghostBlock = block;
-    sf::Color ghostColor = block.getFillColor();
+    sf::Color ghostColor = sf::Color::White;
     ghostColor.a = 64; // Semi-transparent
-    ghostBlock.setFillColor(ghostColor);
-    ghostBlock.setOutlineColor(sf::Color(255, 255, 255, 64));
 
     for (const auto& offset : piece.getBlocks()) {
         const int x = baseX + offset.x;
         const int y = ghostY + offset.y;
         if (x >= 0 && x < Board::Width && y >= 1 && y < Board::Height) {
-            ghostBlock.setPosition({boardX + static_cast<float>(x * CellSize),
+            sf::Sprite ghostSprite(m_textureManager->getBlockTexture(piece.getColorId()));
+            ghostSprite.setColor(ghostColor);
+            ghostSprite.setScale({static_cast<float>(CellSize - 1) / 32.0f,
+                                static_cast<float>(CellSize - 1) / 32.0f});
+            ghostSprite.setPosition({boardX + static_cast<float>(x * CellSize),
                                     boardY + static_cast<float>((y - 1) * CellSize)});
-            window.draw(ghostBlock);
+            window.draw(ghostSprite);
         }
     }
+
+    // Draw actual piece with texture and outline
+    sf::Sprite blockSprite(m_textureManager->getBlockTexture(piece.getColorId()));
+    blockSprite.setScale({static_cast<float>(CellSize - 1) / 32.0f,
+                        static_cast<float>(CellSize - 1) / 32.0f});
+
+    // Draw outline around each block
+    sf::RectangleShape outline;
+    outline.setSize(sf::Vector2f(static_cast<float>(CellSize - 1),
+                                 static_cast<float>(CellSize - 1)));
+    outline.setFillColor(sf::Color::Transparent);
+    outline.setOutlineThickness(1.0f);
+    outline.setOutlineColor(sf::Color(255, 255, 255, 128));
 
     for (const auto& offset : piece.getBlocks()) {
         const int x = baseX + offset.x;
@@ -261,9 +280,12 @@ void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state
             continue;
         }
 
-        block.setPosition({boardX + static_cast<float>(x * CellSize),
-                           boardY + static_cast<float>((y - 1) * CellSize)});
-        window.draw(block);
+        blockSprite.setPosition({boardX + static_cast<float>(x * CellSize),
+                                boardY + static_cast<float>((y - 1) * CellSize)});
+        outline.setPosition({boardX + static_cast<float>(x * CellSize),
+                            boardY + static_cast<float>((y - 1) * CellSize)});
+        window.draw(blockSprite);
+        window.draw(outline);
     }
 }
 
@@ -296,17 +318,16 @@ void GameView::drawNextPiece(sf::RenderWindow& window, const Tetromino& nextPiec
     const float pieceOffsetX = previewX + (4 - width) * CellSize / 2.0f;
     const float pieceOffsetY = previewY + (4 - height) * CellSize / 2.0f;
 
-    sf::RectangleShape block;
-    block.setSize(sf::Vector2f(static_cast<float>(CellSize - 1),
-                               static_cast<float>(CellSize - 1)));
-    block.setFillColor(colorForId(nextPiece.getColorId()));
+    sf::Sprite blockSprite(m_textureManager->getBlockTexture(nextPiece.getColorId()));
+    blockSprite.setScale({static_cast<float>(CellSize - 1) / 32.0f,
+                        static_cast<float>(CellSize - 1) / 32.0f});
 
     for (const auto& b : nextPiece.getBlocks()) {
         const int x = b.x - minX;
         const int y = b.y - minY;
-        block.setPosition({pieceOffsetX + static_cast<float>(x * CellSize),
-                           pieceOffsetY + static_cast<float>(y * CellSize)});
-        window.draw(block);
+        blockSprite.setPosition({pieceOffsetX + static_cast<float>(x * CellSize),
+                                pieceOffsetY + static_cast<float>(y * CellSize)});
+        window.draw(blockSprite);
     }
 }
 
@@ -351,35 +372,22 @@ void GameView::drawUI(sf::RenderWindow& window, const GameState& state,
     modeText.setPosition({uiX, uiY});
     window.draw(modeText);
 
-    // Show deathrun elapsed time or level-based level
+    // Show level
     uiY += lineHeight;
-    if (state.getGameMode() && std::string(state.getGameMode()->getModeName()) == "Deathrun Mode") {
-        // Show elapsed time for deathrun
-        const auto* deathrun = dynamic_cast<const DeathrunMode*>(state.getGameMode());
-        if (deathrun) {
-            sf::Text timeText(m_font, "Time: " + std::to_string(static_cast<int>(deathrun->getElapsedTime())) + "s");
-            timeText.setCharacterSize(20);
-            timeText.setFillColor(sf::Color::Red);
-            timeText.setPosition({uiX, uiY});
-            window.draw(timeText);
-        }
-    } else {
-        // Show level for level-based mode or AI mode
-        const auto* levelMode = dynamic_cast<const LevelBasedMode*>(state.getGameMode());
-        const auto* aiMode = dynamic_cast<const AIMode*>(state.getGameMode());
-        if (levelMode) {
-            sf::Text levelText(m_font, "Level: " + std::to_string(levelMode->getCurrentLevel()));
-            levelText.setCharacterSize(20);
-            levelText.setFillColor(sf::Color::Green);
-            levelText.setPosition({uiX, uiY});
-            window.draw(levelText);
-        } else if (aiMode) {
-            sf::Text levelText(m_font, "Level: " + std::to_string(aiMode->getCurrentLevel()));
-            levelText.setCharacterSize(20);
-            levelText.setFillColor(sf::Color::Green);
-            levelText.setPosition({uiX, uiY});
-            window.draw(levelText);
-        }
+    const auto* levelMode = dynamic_cast<const LevelBasedMode*>(state.getGameMode());
+    const auto* aiMode = dynamic_cast<const AIMode*>(state.getGameMode());
+    if (levelMode) {
+        sf::Text levelText(m_font, "Level: " + std::to_string(levelMode->getCurrentLevel()));
+        levelText.setCharacterSize(20);
+        levelText.setFillColor(sf::Color::Green);
+        levelText.setPosition({uiX, uiY});
+        window.draw(levelText);
+    } else if (aiMode) {
+        sf::Text levelText(m_font, "Level: " + std::to_string(aiMode->getCurrentLevel()));
+        levelText.setCharacterSize(20);
+        levelText.setFillColor(sf::Color::Green);
+        levelText.setPosition({uiX, uiY});
+        window.draw(levelText);
     }
     
     // Show lines cleared for all modes

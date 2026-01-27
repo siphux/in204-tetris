@@ -423,6 +423,16 @@ void GameState::syncBoard(const Board& board) {
     }
 }
 
+void GameState::syncPiecePosition(int x, int y, int rotation) {
+    // Sync opponent's falling piece position for display
+    // This updates the current piece's position and rotation state
+    m_x = x;
+    m_y = y;
+    
+    // Apply rotation state (rotation should be 0-3)
+    m_currentPiece.setRotationState(static_cast<RotationState>(rotation % 4));
+}
+
 // Spawn a new random piece at the top of the board
 // Uses the "bag system" to ensure fair piece distribution
 void GameState::spawnNewPiece() {

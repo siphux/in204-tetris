@@ -28,7 +28,8 @@ void MenuView::renderMainMenu(sf::RenderWindow& window, int selectedOption) cons
     // Draw options
     drawMenuOption(window, "Start Game", 250.0f, selectedOption == 0);
     drawMenuOption(window, "Multiplayer", 250.0f + OPTION_SPACING, selectedOption == 1);
-    drawMenuOption(window, "Exit", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+    drawMenuOption(window, "Settings", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
+    drawMenuOption(window, "Exit", 250.0f + 3 * OPTION_SPACING, selectedOption == 3);
 }
 
 void MenuView::renderModeSelection(sf::RenderWindow& window, int selectedOption) const {
@@ -43,9 +44,8 @@ void MenuView::renderModeSelection(sf::RenderWindow& window, int selectedOption)
 
     // Draw mode options
     drawMenuOption(window, "Level Mode", 250.0f, selectedOption == 0);
-    drawMenuOption(window, "Deathrun Mode", 250.0f + OPTION_SPACING, selectedOption == 1);
-    drawMenuOption(window, "AI Mode", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
-    drawMenuOption(window, "Back", 250.0f + 3 * OPTION_SPACING, selectedOption == 3);
+    drawMenuOption(window, "AI Mode", 250.0f + OPTION_SPACING, selectedOption == 1);
+    drawMenuOption(window, "Back", 250.0f + 2 * OPTION_SPACING, selectedOption == 2);
 }
 
 void MenuView::renderAISelection(sf::RenderWindow& window, int selectedOption) const {
@@ -175,7 +175,7 @@ void MenuView::renderJoinGame(sf::RenderWindow& window, int selectedOption, cons
     drawMenuOption(window, "Back", 360.0f + OPTION_SPACING, selectedOption == 1);
 }
 
-void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) const {
+void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption, float musicVolume) const {
     // Draw semi-transparent overlay
     sf::RectangleShape overlay({static_cast<float>(window.getSize().x),
                                static_cast<float>(window.getSize().y)});
@@ -183,8 +183,8 @@ void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) con
     window.draw(overlay);
 
     // Draw pause menu box
-    float boxWidth = 400.0f;
-    float boxHeight = 300.0f;
+    float boxWidth = 450.0f;
+    float boxHeight = 400.0f;
     float boxX = (window.getSize().x - boxWidth) / 2;
     float boxY = (window.getSize().y - boxHeight) / 2;
 
@@ -198,10 +198,109 @@ void MenuView::renderPauseMenu(sf::RenderWindow& window, int selectedOption) con
     // Draw title
     drawCenteredText(window, "PAUSED", boxY + 30.0f, TITLE_SIZE * 0.75f, sf::Color::White);
 
+    // Draw volume slider
+    float sliderY = boxY + 100.0f;
+    if (m_fontLoaded) {
+        sf::Text volumeLabel(m_font, "Music Volume");
+        volumeLabel.setCharacterSize(24);
+        volumeLabel.setFillColor(sf::Color::White);
+        volumeLabel.setPosition({boxX + 50.0f, sliderY});
+        window.draw(volumeLabel);
+    }
+    
+    // Slider track
+    float sliderX = boxX + 50.0f;
+    float sliderWidth = boxWidth - 100.0f;
+    sliderY += 40.0f;
+    
+    sf::RectangleShape track({sliderWidth, 6.0f});
+    track.setPosition({sliderX, sliderY});
+    track.setFillColor(sf::Color(100, 100, 100));
+    window.draw(track);
+    
+    // Slider fill
+    float fillWidth = (musicVolume / 100.0f) * sliderWidth;
+    sf::RectangleShape fill({fillWidth, 6.0f});
+    fill.setPosition({sliderX, sliderY});
+    fill.setFillColor(sf::Color::Green);
+    window.draw(fill);
+    
+    // Slider handle
+    sf::CircleShape handle(10.0f);
+    handle.setPosition({sliderX + fillWidth - 10.0f, sliderY - 7.0f});
+    handle.setFillColor(selectedOption == 0 ? sf::Color::Yellow : sf::Color::White);
+    window.draw(handle);
+    
+    // Volume percentage
+    if (m_fontLoaded) {
+        sf::Text volumeText(m_font, std::to_string(static_cast<int>(musicVolume)) + "%");
+        volumeText.setCharacterSize(20);
+        volumeText.setFillColor(sf::Color::White);
+        volumeText.setPosition({sliderX + sliderWidth + 15.0f, sliderY - 12.0f});
+        window.draw(volumeText);
+    }
+
     // Draw options
-    float optionY = boxY + 120.0f;
-    drawMenuOption(window, "Resume", optionY, selectedOption == 0);
-    drawMenuOption(window, "Main Menu", optionY + OPTION_SPACING, selectedOption == 1);
+    float optionY = boxY + 220.0f;
+    drawMenuOption(window, "Resume", optionY, selectedOption == 1);
+    drawMenuOption(window, "Main Menu", optionY + OPTION_SPACING, selectedOption == 2);
+}
+
+void MenuView::renderSettingsMenu(sf::RenderWindow& window, int selectedOption, float musicVolume) const {
+    // Draw background
+    sf::RectangleShape background({static_cast<float>(window.getSize().x),
+                                  static_cast<float>(window.getSize().y)});
+    background.setFillColor(sf::Color::Black);
+    window.draw(background);
+
+    // Draw title
+    drawCenteredText(window, "Settings", 100.0f, TITLE_SIZE, sf::Color::White);
+
+    // Draw volume slider
+    float sliderY = 250.0f;
+    if (m_fontLoaded) {
+        sf::Text volumeLabel(m_font, "Music Volume");
+        volumeLabel.setCharacterSize(30);
+        volumeLabel.setFillColor(sf::Color::White);
+        float labelWidth = volumeLabel.getLocalBounds().size.x;
+        volumeLabel.setPosition({(window.getSize().x - labelWidth) / 2.0f, sliderY});
+        window.draw(volumeLabel);
+    }
+    
+    // Slider track
+    float sliderWidth = 400.0f;
+    float sliderX = (window.getSize().x - sliderWidth) / 2.0f;
+    sliderY += 60.0f;
+    
+    sf::RectangleShape track({sliderWidth, 8.0f});
+    track.setPosition({sliderX, sliderY});
+    track.setFillColor(sf::Color(100, 100, 100));
+    window.draw(track);
+    
+    // Slider fill
+    float fillWidth = (musicVolume / 100.0f) * sliderWidth;
+    sf::RectangleShape fill({fillWidth, 8.0f});
+    fill.setPosition({sliderX, sliderY});
+    fill.setFillColor(sf::Color::Green);
+    window.draw(fill);
+    
+    // Slider handle
+    sf::CircleShape handle(12.0f);
+    handle.setPosition({sliderX + fillWidth - 12.0f, sliderY - 8.0f});
+    handle.setFillColor(selectedOption == 0 ? sf::Color::Yellow : sf::Color::White);
+    window.draw(handle);
+    
+    // Volume percentage
+    if (m_fontLoaded) {
+        sf::Text volumeText(m_font, std::to_string(static_cast<int>(musicVolume)) + "%");
+        volumeText.setCharacterSize(28);
+        volumeText.setFillColor(sf::Color::White);
+        volumeText.setPosition({sliderX + sliderWidth + 20.0f, sliderY - 10.0f});
+        window.draw(volumeText);
+    }
+
+    // Draw back option
+    drawMenuOption(window, "Back", 450.0f, selectedOption == 1);
 }
 
 void MenuView::renderNetworkReady(sf::RenderWindow& window, int selectedOption, bool localReady, bool remoteReady) const {
@@ -280,9 +379,9 @@ void MenuView::renderGameOver(sf::RenderWindow& window, int player1Score, int pl
 int MenuView::getOptionCount(MenuState menuState) const {
     switch (menuState) {
         case MenuState::MAIN_MENU:
-            return 3; // Start Game, Multiplayer, Exit
+            return 4; // Start Game, Multiplayer, Settings, Exit
         case MenuState::MODE_SELECTION:
-            return 4; // Level Mode, Deathrun Mode, AI Mode, Back
+            return 3; // Level Mode, AI Mode, Back
         case MenuState::AI_SELECTION:
             return 3; // Simple AI, Advanced AI, Back
         case MenuState::MULTIPLAYER_MENU:
@@ -298,7 +397,9 @@ int MenuView::getOptionCount(MenuState menuState) const {
         case MenuState::NETWORK_READY:
             return 2; // Ready, Back
         case MenuState::PAUSE_MENU:
-            return 2; // Resume, Main Menu
+            return 3; // Volume slider, Resume, Main Menu
+        case MenuState::SETTINGS_MENU:
+            return 2; // Volume slider, Back
         case MenuState::GAME_OVER:
             return 2; // Play Again, Main Menu
         default:
