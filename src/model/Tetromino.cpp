@@ -1,12 +1,7 @@
 #include "Tetromino.h"
 #include <algorithm>
 
-// Wall kick data for SRS (Super Rotation System)
-// Format: {x_offset, y_offset} for each test case
-// Order matters - test in sequence until one works
-
-// Wall kicks for J, L, S, T, Z pieces (non-I pieces)
-// Transition: 0->1 (spawn->right), 1->0, 1->2, 2->1, 2->3, 3->2, 3->0, 0->3
+//Wall kick handling data based on SRS (Super Rotation System)
 namespace WallKicks {
     // Standard wall kicks for J, L, S, T, Z (0->1 and 1->0)
     static const std::vector<Point> JLSTZ_01 = {{0,0}, {-1,0}, {-1,1}, {0,-2}, {-1,-2}};
@@ -45,11 +40,13 @@ namespace WallKicks {
     static const std::vector<Point> O_NONE = {{0,0}};
 }
 
+
+// Tetromino class implementation
 Tetromino::Tetromino(TetrominoType type)
     : m_type(type),
       m_rotationState(RotationState::R0) {
     
-    // Initialize color
+    // Initialize colors based on type
     switch (type) {
         case TetrominoType::I: m_colorId = 1; break;
         case TetrominoType::J: m_colorId = 2; break;
@@ -91,7 +88,7 @@ void Tetromino::initializeRotations() {
             break;
     }
     
-    // Store spawn state
+    // Store state
     m_rotationStates[0] = spawn;
     
     // Generate other rotation states by rotating spawn
@@ -192,6 +189,5 @@ const std::vector<Point>& Tetromino::getWallKicks(TetrominoType type, RotationSt
         if (fromInt == 0 && toInt == 3) return WallKicks::JLSTZ_03;
     }
     
-    // Default: no offset
     return WallKicks::O_NONE;
 }

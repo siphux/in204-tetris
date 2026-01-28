@@ -4,32 +4,34 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <iostream>
+#include <stdexcept>
 
-// GameView: Handles all rendering (drawing) of the game
-// This includes the board, pieces, UI, menus, etc.
 
-// Initialize the view - try to load a font for text rendering
+// Initialize the view
 GameView::GameView() : m_fontLoaded(false), m_localPlayerReady(false), m_remotePlayerReady(false) {
     // Initialize texture manager for block textures
     m_textureManager = std::make_unique<TextureManager>();
     
-    // Try to load a system font for displaying text
-    // Option 1: Try DejaVu Sans (common on Linux)
-    if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
-        // Option 2: Try Liberation Sans (another common Linux font)
-        if (!m_font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")) {
-            // Couldn't load any font - text might not display correctly
-            m_fontLoaded = false;
+    // Try to load a system font for displaying text with exception handling
+    try {
+        if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
+            if (!m_font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")) {
+                std::cerr << "Warning: No system font found for text rendering" << std::endl;
+                m_fontLoaded = false;
+            } else {
+                m_fontLoaded = true;
+            }
         } else {
-            m_fontLoaded = true;  // Successfully loaded Liberation Sans
+            m_fontLoaded = true;
         }
-    } else {
-        m_fontLoaded = true;  // Successfully loaded DejaVu Sans
+    } catch (const std::exception& e) {
+        std::cerr << "Exception loading font: " << e.what() << std::endl;
+        m_fontLoaded = false;
     }
 }
 
-// Main render function - draws everything to the screen
-// Called every frame to update what the player sees
+// Main render function that draws everything to the screen
 void GameView::render(sf::RenderWindow& window, const GameState& state,
                       const MenuView& menuView, MenuState menuState, int selectedOption,
                       bool isMultiplayer, const GameState* remoteState,
@@ -109,21 +111,16 @@ void GameView::render(sf::RenderWindow& window, const GameState& state,
 }
 
 // Render the actual game (board, pieces, UI)
-// Handles both single-player and multiplayer (split-screen) modes
-void GameView::renderGame(sf::RenderWindow& window, const GameState& state, 
-                          bool isMultiplayer, const GameState* remoteState) {
-    // Game over is handled by the menu system, not here
-    
-    // Check if we're in multiplayer mode with a remote player
+void GameView::renderGame(sf::RenderWindow& window, const GameState& state, bool isMultiplayer, const GameState* remoteState) {
     if (isMultiplayer && remoteState) {
         // Split-screen multiplayer mode - show both players side by side
         float windowWidth = static_cast<float>(window.getSize().x);
         float windowHeight = static_cast<float>(window.getSize().y);
-        float boardWidth = Board::Width * CellSize;  // Width of one board in pixels
-        float boardHeight = (Board::Height - 1) * CellSize;  // Height of board in pixels
-        float spacing = 20.0f;  // Space between the two boards
-        float totalWidth = boardWidth * 2 + spacing;  // Total width needed
-        float startX = (windowWidth - totalWidth) / 2.0f;  // Center the boards
+        float boardWidth = Board::Width * CellSize;
+        float boardHeight = Board::Height * CellSize;
+        float spacing = 20.0f;
+        float totalWidth = boardWidth * 2 + spacing;
+        float startX = (windowWidth - totalWidth) / 2.0f;
         
         // Left board (local player)
         float leftX = startX - BoardOffsetX;
@@ -131,7 +128,6 @@ void GameView::renderGame(sf::RenderWindow& window, const GameState& state,
         if (!state.isClearingLines()) {
             drawCurrentPiece(window, state, leftX, 0.0f);
         }
-        // Preview centered above the board for the left player
         float previewLeftX = leftX + (Board::Width * CellSize - 4 * CellSize) / 2.0f;
         drawNextPiece(window, state.nextPiece(), previewLeftX - 250, 0.0f);
         drawUI(window, state, leftX - BoardOffsetX - 150, "You");
@@ -142,20 +138,18 @@ void GameView::renderGame(sf::RenderWindow& window, const GameState& state,
         if (!remoteState->isClearingLines()) {
             drawCurrentPiece(window, *remoteState, rightX, 0.0f);
         }
-        // Preview centered above the board for the right player
         float previewRightX = rightX + (Board::Width * CellSize - 4 * CellSize) / 2.0f;
         drawNextPiece(window, remoteState->nextPiece(), previewRightX + 250, 0.0f);
         drawUI(window, *remoteState, rightX + BoardOffsetX + 300, "Opponent");
         
     } else {
-        // Solo mode - normal rendering
+        // Solo mode
         drawBoard(window, state.board(), state);
         
         if (!state.isClearingLines()) {
             drawCurrentPiece(window, state);
         }
         
-        // Next piece preview to the right of the board (solo positioning)
         float nextPieceX = BoardOffsetX + Board::Width * CellSize + 50.0f;
         drawNextPiece(window, state.nextPiece(), nextPieceX - BoardOffsetX, 0.0f);
         drawUI(window, state);
@@ -183,30 +177,25 @@ void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const Gam
 
     float boardX = BoardOffsetX + offsetX;
     float boardY = BoardOffsetY + offsetY;
-
-    // Obtenir le progrès de l'animation si une suppression est en cours
     float animationProgress = state.isClearingLines() ? state.getClearAnimationProgress() : 0.0f;
 
-    // Commencer à y=1 pour cacher la ligne de spawn (ligne 0)
-    for (int y = 1; y < Board::Height; ++y) {
+    for (int y = 0; y < Board::Height; ++y) {
         for (int x = 0; x < Board::Width; ++x) {
             const int value = board.getCell(x, y);
             
             // Vérifier si c'est une ligne en cours de suppression (valeur -1)
             if (value == -1) {
-                // Ligne en cours de suppression - effet visuel avec fade out
-                // L'alpha diminue de 255 à 0 pendant l'animation
-                // Utiliser un effet de pulsation pour plus de visibilité
-                float pulse = 0.5f + 0.5f * std::sin(animationProgress * 3.14159f * 4.0f); // Pulsation rapide
+                //on utilise un sinus pour l'animation de disparition
+                float pulse = 0.5f + 0.5f * std::sin(animationProgress * 3.14159f * 4.0f);
                 unsigned char alpha = static_cast<unsigned char>(255 * (1.0f - animationProgress) * pulse);
-                cell.setFillColor(sf::Color(255, 255, 255, alpha)); // Blanc qui disparaît avec pulsation
+                cell.setFillColor(sf::Color(255, 255, 255, alpha));
                 cell.setPosition({boardX + static_cast<float>(x * CellSize),
-                                  boardY + static_cast<float>((y - 1) * CellSize)});
+                                  boardY + static_cast<float>(y * CellSize)});
                 window.draw(cell);
             } else if (value == 0) {
-                cell.setFillColor(sf::Color(30, 30, 30)); // Vide
+                cell.setFillColor(sf::Color(30, 30, 30));
                 cell.setPosition({boardX + static_cast<float>(x * CellSize),
-                                  boardY + static_cast<float>((y - 1) * CellSize)});
+                                  boardY + static_cast<float>(y * CellSize)});
                 window.draw(cell);
             } else {
                 // Draw textured block
@@ -214,7 +203,7 @@ void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const Gam
                 blockSprite.setScale({static_cast<float>(CellSize - 1) / 32.0f,
                                     static_cast<float>(CellSize - 1) / 32.0f});
                 blockSprite.setPosition({boardX + static_cast<float>(x * CellSize),
-                                        boardY + static_cast<float>((y - 1) * CellSize)});
+                                        boardY + static_cast<float>(y * CellSize)});
                 window.draw(blockSprite);
             }
         }
@@ -223,7 +212,7 @@ void GameView::drawBoard(sf::RenderWindow& window, const Board& board, const Gam
     // Board border
     sf::RectangleShape border;
     border.setSize(sf::Vector2f(static_cast<float>(Board::Width * CellSize),
-                                static_cast<float>((Board::Height - 1) * CellSize)));
+                                static_cast<float>(Board::Height * CellSize)));
     border.setPosition({boardX, boardY});
     border.setFillColor(sf::Color::Transparent);
     border.setOutlineColor(sf::Color::White);
@@ -248,13 +237,13 @@ void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state
     for (const auto& offset : piece.getBlocks()) {
         const int x = baseX + offset.x;
         const int y = ghostY + offset.y;
-        if (x >= 0 && x < Board::Width && y >= 1 && y < Board::Height) {
+        if (x >= 0 && x < Board::Width && y >= 0 && y < Board::Height) {
             sf::Sprite ghostSprite(m_textureManager->getBlockTexture(piece.getColorId()));
             ghostSprite.setColor(ghostColor);
             ghostSprite.setScale({static_cast<float>(CellSize - 1) / 32.0f,
                                 static_cast<float>(CellSize - 1) / 32.0f});
             ghostSprite.setPosition({boardX + static_cast<float>(x * CellSize),
-                                    boardY + static_cast<float>((y - 1) * CellSize)});
+                                    boardY + static_cast<float>(y * CellSize)});
             window.draw(ghostSprite);
         }
     }
@@ -276,14 +265,14 @@ void GameView::drawCurrentPiece(sf::RenderWindow& window, const GameState& state
         const int x = baseX + offset.x;
         const int y = baseY + offset.y;
 
-        if (x < 0 || x >= Board::Width || y < 1 || y >= Board::Height) {
+        if (x < 0 || x >= Board::Width || y < 0 || y >= Board::Height) {
             continue;
         }
 
         blockSprite.setPosition({boardX + static_cast<float>(x * CellSize),
-                                boardY + static_cast<float>((y - 1) * CellSize)});
+                                boardY + static_cast<float>(y * CellSize)});
         outline.setPosition({boardX + static_cast<float>(x * CellSize),
-                            boardY + static_cast<float>((y - 1) * CellSize)});
+                            boardY + static_cast<float>(y * CellSize)});
         window.draw(blockSprite);
         window.draw(outline);
     }

@@ -15,6 +15,5 @@ int Level::current() const {
 }
 
 float Level::fallSpeed() const {
-    // Faster falling at higher levels
     return 0.5f - 0.05f * m_level;
 }

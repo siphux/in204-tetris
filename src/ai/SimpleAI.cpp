@@ -3,7 +3,7 @@
 #include <cmath>
 
 std::pair<int, int> SimpleAI::chooseMove(const GameState& state){
-    double bestScore = -std::numeric_limits<double>::infinity(); // Maximize
+    double bestScore = -std::numeric_limits<double>::infinity(); // we have a maximization problem
     int bestRotation = 0;
     int bestColumn = 0;
     const Board& board = state.board();

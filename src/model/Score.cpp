@@ -8,7 +8,6 @@ void Score::reset() {
 
 void Score::addLineClear(int linesCleared, int level) {
     int baseScore = 0;
-
     switch (linesCleared) {
         case 1: baseScore = 40; break;   // Single
         case 2: baseScore = 100; break;  // Double
@@ -16,11 +15,12 @@ void Score::addLineClear(int linesCleared, int level) {
         case 4: baseScore = 1200; break; // Tetris
         default: return;
     }
-
-    // Formule: f(p, n) = p * (n + 1)
-    // où p = baseScore, n = level
+    //classic formula: score * (level + 1)
     m_score += baseScore * (level + 1);
 }
+
+
+
 
 int Score::value() const {
     return m_score;

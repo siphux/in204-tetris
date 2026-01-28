@@ -4,8 +4,6 @@
 LevelBasedMode::LevelBasedMode() : m_level(), m_totalLinesCleared(0) {}
 
 void LevelBasedMode::update(float deltaTime, GameState& gameState) {
-    // Level-based mode doesn't need per-frame updates
-    // Level progression is handled in onLinesClear
 }
 
 float LevelBasedMode::getFallSpeed() const {

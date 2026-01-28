@@ -8,27 +8,20 @@
 #include <SFML/Window/Event.hpp>
 #include <memory>
 
-// Forward declarations
 class GameMode;
+class MultiplayerGameMode;
 
-// GameController manages the game loop and coordinates between
-// input handling, game state updates, and rendering
+//Game controller handles game loop, and manages the coordination between input, game state and rendering.
 class GameController {
 public:
     GameController();
     ~GameController();
-    
-    // Process SFML events (call this in your main loop)
     void handleEvent(const sf::Event& event);
-    
-    // Update game logic (call this every frame with deltaTime)
     void update(float deltaTime);
     
-    // Get the current game state (for rendering)
     const GameState& getGameState() const;
     GameState& getGameState();
     
-    // Get opponent game state (for multiplayer/local AI rendering)
     const GameState& getRemoteGameState() const;
     
     // Check if game is over
@@ -65,7 +58,7 @@ public:
     float getMusicVolume() const { return m_musicVolume; }
     void setMusicVolume(float volume);
     
-    // Local AI mode: AI vs AI and Player vs AI support
+    // Local AI mode
     void setLocalPlayerAI(bool enabled, bool useAdvanced = true);
     bool isLocalPlayerAI() const { return m_localPlayerAI; }
     void setRemotePlayerAI(bool enabled, bool useAdvanced = true);  // "Remote" = second/opponent player in local mode
@@ -77,7 +70,7 @@ public:
 
 private:
     GameState m_gameState;
-    GameState m_remoteGameState;  // For multiplayer: opponent's state
+    GameState m_remoteGameState;  // opponent's state in multiplayer
     InputHandler m_inputHandler;
     MenuView m_menuView;
     MenuState m_currentMenuState;
@@ -102,29 +95,51 @@ private:
     bool m_localPlayerAIAdvanced;
     bool m_remotePlayerAI;
     bool m_remotePlayerAIAdvanced;
-    bool m_localAIMode;  // Local AI vs AI mode (no network)
+    bool m_localAIMode;
     float m_aiMoveTimer;
     float m_remoteAIMoveTimer;
     std::unique_ptr<AIPlayer> m_aiPlayer;
     std::unique_ptr<AIPlayer> m_remoteAIPlayer;
     
-    // Winner tracking for local AI mode
+
+    //Track the current game mode for the play again option
+    enum class LocalMultiplayerMode {
+        NONE,
+        AI_VS_AI,
+        PLAYER_VS_AI
+    } m_currentLocalMultiplayerMode;
+    
+    // 
+    enum class SingleplayerMode {
+        NONE,
+        LEVEL_MODE,
+        SIMPLE_AI,
+        ADVANCED_AI
+    } m_currentSingleplayerMode;
+    
+    //track winner
     int m_localAIModeWinnerId;
     std::string m_localAIModeWinnerName;
     
-    // Input timing for movement (to prevent too-fast movement)
-    float m_inputTimer;
-    static constexpr float INPUT_DELAY = 0.1f; // 100ms delay between moves (same for single and multiplayer)
+    std::unique_ptr<MultiplayerGameMode> m_multiplayerMode;
+
+    bool m_leftHeld;
+    bool m_rightHeld;
+    bool m_downHeld;
+    float m_leftHoldTimer;
+    float m_rightHoldTimer;
+    float m_downHoldTimer;
+    static constexpr float MOVE_REPEAT_INTERVAL = 0.1f;
+    static constexpr float SOFT_DROP_REPEAT_INTERVAL = 0.05f;
     
-    // Process continuous input (movement keys)
-    void processContinuousInput();
+    // Process continuous input (hold arrow keys)
+    void processContinuousInput(float deltaTime);
     
-    // Helper functions for local AI mode
     void updateLocalPlayerInAIMode(float deltaTime);
     void updateRemotePlayerInAIMode(float deltaTime);
     void makeAIMove(GameState& gameState, AIPlayer* aiPlayer, float& moveTimer);
     
-    // Process discrete input (rotation)
+    // Process discrete input (rotations, hard drop)
     void processDiscreteInput();
     
     // Handle menu input

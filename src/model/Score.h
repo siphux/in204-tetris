@@ -1,17 +1,16 @@
 #pragma once
 
-// Handles scoring following a TETRIS 99–like system
 class Score {
 public:
     Score();
 
-    // Add score depending on cleared lines and current level
+    // Add score according to the number of lines cleared with the move and the level
     void addLineClear(int linesCleared, int level);
 
-    // Direct access to current score
+    // Access current score
     int value() const;
 
-    // Reset score (new game)
+    // Reset score (for new game)
     void reset();
 
 private:

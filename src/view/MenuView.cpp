@@ -1,9 +1,7 @@
 #include "MenuView.h"
 #include <string>
 
-// MenuView: Handles rendering of all menus (main menu, mode selection, etc.)
-
-// Initialize the menu view - try to load a font for text
+//default constructor
 MenuView::MenuView() : m_fontLoaded(false) {
     // Try to load a system font (different paths for different operating systems)
     if (!m_font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") &&  // Linux
@@ -346,7 +344,7 @@ void MenuView::renderGameOver(sf::RenderWindow& window, int player1Score, int pl
 
     // Draw title based on multiplayer or singleplayer
     if (isMultiplayer && winnerId != -1) {
-        // Multiplayer: Show winner
+        //Show winner in multiplayer
         drawCenteredText(window, "GAME OVER", 80.0f, TITLE_SIZE, sf::Color::Red);
         
         std::string winnerText = winnerName.empty() ? ("Player " + std::to_string(winnerId + 1) + " Wins!") 

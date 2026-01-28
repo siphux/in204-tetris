@@ -4,9 +4,7 @@
 #include "../ai/AIPlayer.h"
 #include <memory>
 
-// AI Mode: An AI player automatically plays the game
-// The AI uses heuristics to make optimal piece placements
-// Uses level-based progression similar to Level Mode
+//AI mode where an AI plays
 class AIMode : public GameMode {
 public:
     AIMode(bool useAdvanced = true);
@@ -23,12 +21,11 @@ public:
 
 private:
     std::unique_ptr<AIPlayer> m_ai;
-    bool m_useAdvanced;  // Store the AI type choice
+    bool m_useAdvanced;  // choose between the two types of AI
     float m_moveTimer;
     Level m_level;
     int m_totalLinesCleared;
     
-    static constexpr float BASE_SPEED = 0.5f;  // Base speed for AI
-    static constexpr float SPEED_MULTIPLIER = 0.05f;  // Speed increase per level
-    static constexpr float MOVE_DELAY = 0.2f; // Time between AI moves in seconds
+    static constexpr float BASE_SPEED = 0.5f;
+    static constexpr float SPEED_MULTIPLIER = 0.05f;  
 };

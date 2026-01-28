@@ -1,38 +1,33 @@
 #pragma once
 #include <vector>
 
-// Forward declaration (Point is defined in Tetromino.h)
 struct Point;
 
-// Represents the Tetris grid.
-// The board only stores fixed blocks (no moving piece).
+//Tetris board class managing grid state
 class Board {
 public:
     static constexpr int Width  = 10;
-    static constexpr int Height = 21; // includes hidden spawn row
+    static constexpr int Height = 21; //one more row for the hidden spawn area
 
     Board();
 
-    // Reset the board to empty
+    // reset the board
     void clear();
-
-    // Check if coordinates are inside the board
+    // Check if coordinates are inside the board (here x and y are horizontal and vertical indices != m_grid[y][x])
     bool isInside(int x, int y) const;
-
     // Check if a cell is empty
     bool isEmpty(int x, int y) const;
-
     // Read-only access to a cell
     int getCell(int x, int y) const;
-
     // Modify a cell value
     void setCell(int x, int y, int value);
     
-    // Check if a tetromino piece would collide at given position
-    // Takes piece blocks (relative positions) and absolute position
+
+
+    //check if blocks yield collision at given position
     bool checkCollision(const std::vector<Point>& blocks, int posX, int posY) const;
 
 private:
-    // Grid storing color IDs (0 = empty)
+    //initial grid a matrix 
     int m_grid[Height][Width];
 };

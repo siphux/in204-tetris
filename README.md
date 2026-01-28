@@ -1,19 +1,16 @@
 # IN204 Tetris Project
 
-A feature-rich Tetris implementation with single-player modes, AI opponents, and network multiplayer support.
+A Tetris implementation with single-player modes, AI opponents, and network multiplayer support.
 
 ## Features
 
 ### Game Modes
 - **Level Mode**: Classic Tetris with increasing difficulty levels
-- **Deathrun Mode**: Time-based challenge mode
-- **AI Mode**: Play against AI opponents (Simple or Advanced)
-- **Multiplayer Mode**: Network-based 1v1 gameplay
-  - **Race Mode**: First to clear target lines wins
-  - **Malus Mode**: Attack opponents with maluses
+- **AI Modes**: Either watch an AI play (Simple or Advanced), play against AI opponents or watch two AIs play against each other 
+- **Multiplayer Mode**: 1v1 gameplay with marathon mode where first to clear a target number of lines wins
 
-### Multiplayer Features
-- Local network and internet play support
+### LAN Multiplayer Features (not working in WSL to be tested elsewhere)
+- Local network multiplayer 
 - Split-screen display showing both players' boards
 - Real-time connection status and latency display
 - Client-side prediction for smooth gameplay
@@ -24,12 +21,12 @@ A feature-rich Tetris implementation with single-player modes, AI opponents, and
 
 ### Prerequisites
 - CMake 3.10 or higher
-- C++17 compatible compiler (GCC 7+, Clang 5+, MSVC 2017+)
-- SFML 3.0.2 or compatible
+- C++ compiler which uses at least C++17
+- SFML 3.0.2
 
-### Build Instructions
+### Build Instructions (for Linux/MacOS)
 
-1. **Clone the repository** (if not already done):
+1. **Clone the repository**:
    ```bash
    git clone <repository-url>
    cd in204-tetris
@@ -45,27 +42,13 @@ A feature-rich Tetris implementation with single-player modes, AI opponents, and
    cmake --build build
    ```
 
-   Or on Windows:
-   ```bash
-   cmake --build build --config Release
-   ```
 
 4. **Run the game**:
    ```bash
    ./build/IN204-TETRIS
    ```
 
-   Or on Windows:
-   ```bash
-   build\Release\IN204-TETRIS.exe
-   ```
 
-### CMake Options
-
-- `CMAKE_BUILD_TYPE`: Set to `Release` for optimized builds, `Debug` for debugging
-  ```bash
-   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-   ```
 
 ## Controls
 
@@ -75,11 +58,11 @@ A feature-rich Tetris implementation with single-player modes, AI opponents, and
 - **Up Arrow**: Rotate clockwise
 - **Z**: Rotate counter-clockwise
 - **Space**: Hard drop
-- **Escape**: Pause menu / Exit
+- **Escape**: Pause menu
 
 ## Multiplayer Setup
 
-### Local Network (Same Wi-Fi)
+### Local Network (Same Sub-Network)
 
 1. **Host**: Select "Multiplayer" → "Host Game"
 2. **Note the Local Network IP** displayed (e.g., `192.168.1.100:53000`)
@@ -117,8 +100,10 @@ in204-tetris/
 │   ├── network/        # Multiplayer networking
 │   ├── ai/             # AI opponents
 │   └── main.cpp        # Entry point
-├── CMakeLists.txt      # Build configuration
-└── README.md          # This file
+├── CMakeLists.txt      # CMake build configuration
+├── data/               # Contains file for game music and possibly other assets
+├── config.ini          # Configuration file
+└── README.md           # This file
 ```
 
 ## Technical Details
@@ -126,8 +111,6 @@ in204-tetris/
 ### Network Protocol
 - Uses TCP sockets via SFML Network
 - Custom message protocol with frame numbers for synchronization
-- Heartbeat system for connection monitoring
-- Client-side prediction for responsive gameplay
 
 ### Architecture
 - MVC (Model-View-Controller) pattern
@@ -135,23 +118,3 @@ in204-tetris/
 - State-based game modes
 - Network session management
 
-## Troubleshooting
-
-### Connection Issues
-- **"Connection timeout"**: 
-  - Check firewall settings
-  - Verify port forwarding (for internet play)
-  - Ensure both players are on the same network (for local play)
-  - Try using the local IP instead of public IP
-
-### Build Issues
-- **SFML not found**: Ensure SFML is installed and CMake can find it
-- **C++17 errors**: Update your compiler to a C++17 compatible version
-
-## License
-
-[Add your license information here]
-
-## Contributors
-
-[Add contributor information here]

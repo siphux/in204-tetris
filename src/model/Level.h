@@ -1,15 +1,12 @@
 #pragma once
 
-// Manages game speed progression.
+//Levels management for the level based game mode
 class Level {
 public:
     Level();
 
-    void addLines(int count);
-
+     void addLines(int count);
     int current() const;
-
-    // Falling speed depending on level
     float fallSpeed() const;
 
 private:

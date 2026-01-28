@@ -3,7 +3,7 @@
 #include <algorithm>
 
 std::pair<int, int> AdvancedAI::chooseMove(const GameState& state){
-    double bestScore = std::numeric_limits<double>::infinity();
+    double bestScore = std::numeric_limits<double>::infinity(); //we minimize the cost (but could maximize)
     int bestRotation = 0;
     int bestColumn = 0;
     const Board& board = state.board();
@@ -50,6 +50,7 @@ std::pair<int, int> AdvancedAI::chooseMove(const GameState& state){
     return {bestRotation, bestColumn};
 }
 
+//Redundant function that could have been computed by calling boardEvaluation from SimpleAI (but we changed logic to minimize cost here)
 double AdvancedAI::computeCostWithPosition(const Board& board, const Tetromino& nextPiece, bool recursiveMode) const {
     double firstCost = -boardEvaluation(board);
     

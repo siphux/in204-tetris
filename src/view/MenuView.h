@@ -13,7 +13,7 @@ enum class MenuState {
     LAN_MULTIPLAYER,
     HOST_GAME,
     JOIN_GAME,
-    NETWORK_READY,  // Both players connected, waiting for ready confirmation
+    NETWORK_READY,  // ready screen that both players need to confirm before starting LAN multiplayer game
     PAUSE_MENU,
     SETTINGS_MENU,
     GAME_OVER,

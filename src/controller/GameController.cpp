@@ -1,22 +1,16 @@
 #include "GameController.h"
 #include "../model/LevelBasedMode.h"
 #include "../model/AIMode.h"
+#include "../model/MultiplayerMode.h"
 #include "../ai/SimpleAI.h"
 #include "../ai/AdvancedAI.h"
+#include "../ConfigManager.h"
 #include <iostream>
 
-namespace {
-constexpr int TARGET_LINES = 40;
-constexpr float AI_MOVE_DELAY = 0.2f;
-}
-
-// GameController: The main controller that manages the entire game
-// It handles input, updates game state, and coordinates between model and view
 
 // Initialize all game state variables
 GameController::GameController()
-        : m_inputTimer(0.0f),                    // Timer for input delay
-            m_currentMenuState(MenuState::MAIN_MENU),  // Start at main menu
+        : m_currentMenuState(MenuState::MAIN_MENU),  // Start at main menu
       m_selectedOption(0),                   // First option selected
       m_shouldExit(false),                   // Don't exit yet
       m_musicVolume(50.0f),                  // Default 50% volume
@@ -31,40 +25,51 @@ GameController::GameController()
       m_remotePlayerAI(false),               // Second player is human by default
       m_remotePlayerAIAdvanced(false),       // Second player AI difficulty
       m_localAIMode(false),                  // Not in local AI mode
-      m_aiMoveTimer(0.0f),                   // Timer for AI moves
-      m_remoteAIMoveTimer(0.0f),             // Timer for second player AI moves
+      m_currentLocalMultiplayerMode(LocalMultiplayerMode::NONE),  // Track which multiplayer mode
+      m_currentSingleplayerMode(SingleplayerMode::NONE),  // Track which single-player mode
+    m_aiMoveTimer(0.0f),                   // Timer for AI moves
+    m_remoteAIMoveTimer(0.0f),             // Timer for second player AI moves
       m_localAIModeWinnerId(-1),             // No winner yet
-      m_localAIModeWinnerName("") {          // No winner name yet
+    m_localAIModeWinnerName(""),           // No winner name yet
+    m_leftHeld(false),
+    m_rightHeld(false),
+    m_downHeld(false),
+    m_leftHoldTimer(0.0f),
+    m_rightHoldTimer(0.0f),
+    m_downHoldTimer(0.0f) {
     // Initialize music manager
-    m_musicManager = std::make_unique<MusicManager>();
-    if (m_musicManager->initialize()) {
-        m_musicManager->play();
+    try {
+        m_musicManager = std::make_unique<MusicManager>();
+        if (m_musicManager->initialize()) {
+            m_musicManager->play();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error initializing music manager: " << e.what() << std::endl;
     }
 }
 
 // Clean up when controller is destroyed
 GameController::~GameController() = default;
 
-// Handle all events from SFML (key presses, mouse clicks, etc.)
-// Note: Key repeat is disabled in main.cpp to prevent duplicate key press events
+//Handle SFML events (inputs from keyboard, mouse, ...)
 void GameController::handleEvent(const sf::Event& event) {
-    // Handle menu input first
+    // menu input
     if (m_currentMenuState != MenuState::NONE) {
         if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>()) {
             handleMenuInput(keyPressed->code);
         }
-        // Handle text input for JOIN_GAME menu
+        // handle text input for joining a game
         if (m_currentMenuState == MenuState::JOIN_GAME) {
             if (const auto* textEntered = event.getIf<sf::Event::TextEntered>()) {
                 char c = static_cast<char>(textEntered->unicode);
-                // Allow digits and dots for IP address
+                // allow digits and dots for IP address input
                 if ((c >= '0' && c <= '9') || c == '.') {
-                    if (m_ipInput.length() < 15) {  // Max IP length
+                    if (m_ipInput.length() < 15) {
                         m_ipInput += c;
                     }
                 }
-                // Handle backspace
-                else if (c == 8 && !m_ipInput.empty()) {  // Backspace
+                //remove characters using backspace
+                else if (c == 8 && !m_ipInput.empty()) {
                     m_ipInput.pop_back();
                 }
             }
@@ -97,7 +102,7 @@ void GameController::handleEvent(const sf::Event& event) {
             // Local AI mode with AI player enabled
             isAIControlling = true;
         } else {
-            // Check if game mode is AIMode (AI plays automatically)
+            // Check if game mode is AIMode
             const auto* aiMode = dynamic_cast<const AIMode*>(m_gameState.getGameMode());
             if (aiMode) {
                 isAIControlling = true;
@@ -148,8 +153,7 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
     
     // Handle volume slider left/right in pause and settings menus
     // Must be BEFORE up/down navigation to prevent conflicts
-    if ((m_currentMenuState == MenuState::PAUSE_MENU || m_currentMenuState == MenuState::SETTINGS_MENU) && 
-        m_selectedOption == 0) {
+    if ((m_currentMenuState == MenuState::PAUSE_MENU || m_currentMenuState == MenuState::SETTINGS_MENU) && m_selectedOption == 0) {
         if (key == sf::Keyboard::Key::Left) {
             m_musicVolume = std::max(0.0f, m_musicVolume - 5.0f);
             setMusicVolume(m_musicVolume);
@@ -160,25 +164,17 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             return;  // Don't process as menu navigation
         }
     }
-    
-    // Get how many options are in the current menu
     int optionCount = m_menuView.getOptionCount(m_currentMenuState);
-    
-    // Prevent division by zero if menu has no options
     if (optionCount == 0) {
         return;
     }
     
     // Handle arrow keys to navigate menu
     if (key == sf::Keyboard::Key::Up) {
-        // Move selection up (wrap to bottom if at top)
         m_selectedOption = (m_selectedOption - 1 + optionCount) % optionCount;
     } else if (key == sf::Keyboard::Key::Down) {
-        // Move selection down (wrap to top if at bottom)
         m_selectedOption = (m_selectedOption + 1) % optionCount;
     } else if (key == sf::Keyboard::Key::Enter) {
-        // Enter key selects the current option
-        // Handle menu selection
         if (m_currentMenuState == MenuState::MAIN_MENU) {
             if (m_selectedOption == 0) {
                 // Start Game - go to mode selection
@@ -206,6 +202,7 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             if (m_selectedOption == 0) {
                 // Level Mode
                 m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
+                m_currentSingleplayerMode = SingleplayerMode::LEVEL_MODE;
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 1) {
                 // AI Mode - go to AI selection submenu
@@ -220,10 +217,12 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             if (m_selectedOption == 0) {
                 // Simple AI
                 m_gameState.setGameMode(std::make_unique<AIMode>(false));
+                m_currentSingleplayerMode = SingleplayerMode::SIMPLE_AI;
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 1) {
                 // Advanced AI
                 m_gameState.setGameMode(std::make_unique<AIMode>(true));
+                m_currentSingleplayerMode = SingleplayerMode::ADVANCED_AI;
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 2) {
                 // Back
@@ -246,7 +245,7 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
         } else if (m_currentMenuState == MenuState::LAN_MULTIPLAYER) {
             if (m_selectedOption == 0) {
                 // Host Game
-                startHosting();
+                startHosting(ConfigManager::getInstance().getNetworkPort());
                 m_currentMenuState = MenuState::HOST_GAME;
                 m_selectedOption = 0;
             } else if (m_selectedOption == 1) {
@@ -265,7 +264,7 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             if (m_selectedOption == 0) {
                 // Connect
                 if (!m_ipInput.empty()) {
-                    connectToHost(m_ipInput);
+                    connectToHost(m_ipInput, ConfigManager::getInstance().getNetworkPort());
                     // If connection successful, game will start (NONE state)
                     // If failed, stay in JOIN_GAME menu
                 }
@@ -289,10 +288,14 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             if (m_selectedOption == 0) {
                 // AI vs AI - two AIs play locally, no network needed
                 m_localAIMode = true;
+                m_currentLocalMultiplayerMode = LocalMultiplayerMode::AI_VS_AI;
                 m_gameState.reset();
                 m_remoteGameState.reset();
                 m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
                 m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
+                // Initialize multiplayer mode with config value
+                int targetLines = ConfigManager::getInstance().getDefaultTargetLines();
+                m_multiplayerMode = std::make_unique<MultiplayerGameMode>(targetLines);
                 // Player 1 (left): Advanced AI, Player 2 (right): Simple AI
                 setLocalPlayerAI(true, true);
                 setRemotePlayerAI(true, false);
@@ -301,10 +304,14 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             } else if (m_selectedOption == 1) {
                 // Player vs AI - you play, AI plays against you (no network)
                 m_localAIMode = true;
+                m_currentLocalMultiplayerMode = LocalMultiplayerMode::PLAYER_VS_AI;
                 m_gameState.reset();
                 m_remoteGameState.reset();
                 m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
                 m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
+                // Initialize multiplayer mode with config value
+                int targetLines = ConfigManager::getInstance().getDefaultTargetLines();
+                m_multiplayerMode = std::make_unique<MultiplayerGameMode>(targetLines);
                 // Player 1 (you): Human, Player 2 (opponent): Advanced AI
                 setLocalPlayerAI(false, false);
                 setRemotePlayerAI(true, true);
@@ -320,14 +327,17 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
                 // Resume
                 m_currentMenuState = MenuState::NONE;
             } else if (m_selectedOption == 2) {
-                // Solo mode or local AI mode: Main Menu - reset all AI state
+                // Return to Main Menu - reset all state
                 m_localAIMode = false;
                 m_localPlayerAI = false;
                 m_remotePlayerAI = false;
+                m_currentLocalMultiplayerMode = LocalMultiplayerMode::NONE;
+                m_currentSingleplayerMode = SingleplayerMode::NONE;
                 m_aiPlayer.reset();
                 m_remoteAIPlayer.reset();
                 m_aiMoveTimer = 0.0f;
                 m_remoteAIMoveTimer = 0.0f;
+                m_multiplayerMode.reset();
                 m_gameState.reset();
                 m_remoteGameState.reset();
                 m_currentMenuState = MenuState::MAIN_MENU;
@@ -335,25 +345,51 @@ void GameController::handleMenuInput(const sf::Keyboard::Key& key) {
             }
         } else if (m_currentMenuState == MenuState::GAME_OVER) {
             if (m_selectedOption == 0) {
-                // Play Again - reset all AI state
-                m_localAIMode = false;
-                m_localPlayerAI = false;
-                m_remotePlayerAI = false;
-                m_aiPlayer.reset();
-                m_remoteAIPlayer.reset();
-                m_aiMoveTimer = 0.0f;
-                m_remoteAIMoveTimer = 0.0f;
-                m_localAIModeWinnerId = -1;
-                m_localAIModeWinnerName = "";
-                m_gameState.reset();
-                m_remoteGameState.reset();
-                m_currentMenuState = MenuState::MODE_SELECTION;
-                m_selectedOption = 0;
+                // Play Again
+                // If we were in local multiplayer mode, restart the same mode
+                if (m_currentLocalMultiplayerMode != LocalMultiplayerMode::NONE) {
+                    m_gameState.reset();
+                    m_remoteGameState.reset();
+                    m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
+                    m_remoteGameState.setGameMode(std::make_unique<LevelBasedMode>());
+                    int targetLines = ConfigManager::getInstance().getDefaultTargetLines();
+                    m_multiplayerMode = std::make_unique<MultiplayerGameMode>(targetLines);
+                    
+                    if (m_currentLocalMultiplayerMode == LocalMultiplayerMode::AI_VS_AI) {
+                        // Restart AI vs AI
+                        setLocalPlayerAI(true, true);
+                        setRemotePlayerAI(true, false);
+                    } else if (m_currentLocalMultiplayerMode == LocalMultiplayerMode::PLAYER_VS_AI) {
+                        // Restart Player vs AI
+                        setLocalPlayerAI(false, false);
+                        setRemotePlayerAI(true, true);
+                    }
+                    m_localAIModeWinnerId = -1;
+                    m_localAIModeWinnerName = "";
+                    m_currentMenuState = MenuState::NONE;  // Start playing immediately
+                    m_selectedOption = 0;
+                } else if (m_currentSingleplayerMode != SingleplayerMode::NONE) {
+                    // Single-player mode: restart the same mode
+                    m_gameState.reset();
+                    
+                    if (m_currentSingleplayerMode == SingleplayerMode::LEVEL_MODE) {
+                        m_gameState.setGameMode(std::make_unique<LevelBasedMode>());
+                    } else if (m_currentSingleplayerMode == SingleplayerMode::SIMPLE_AI) {
+                        m_gameState.setGameMode(std::make_unique<AIMode>(false));
+                    } else if (m_currentSingleplayerMode == SingleplayerMode::ADVANCED_AI) {
+                        m_gameState.setGameMode(std::make_unique<AIMode>(true));
+                    }
+                    
+                    m_currentMenuState = MenuState::NONE;  // Start playing immediately
+                    m_selectedOption = 0;
+                }
             } else if (m_selectedOption == 1) {
-                // Main Menu - reset all AI state
+                // Main Menu - reset all state
                 m_localAIMode = false;
                 m_localPlayerAI = false;
                 m_remotePlayerAI = false;
+                m_currentLocalMultiplayerMode = LocalMultiplayerMode::NONE;
+                m_currentSingleplayerMode = SingleplayerMode::NONE;
                 m_aiPlayer.reset();
                 m_remoteAIPlayer.reset();
                 m_aiMoveTimer = 0.0f;
@@ -406,11 +442,16 @@ void GameController::update(float deltaTime) {
         return;
     }
 
-    // Local AI mode (AI vs AI or Player vs AI, no network needed)
+    // Local AI mode: handle AI vs AI or Player vs AI
     if (m_localAIMode) {
         // Update both game states
         m_gameState.update(deltaTime);
         m_remoteGameState.update(deltaTime);
+        
+        // Update multiplayer mode (tracks time and checks victory)
+        if (m_multiplayerMode) {
+            m_multiplayerMode->update(deltaTime, m_gameState, m_remoteGameState);
+        }
         
         // Handle local player (either AI or human)
         updateLocalPlayerInAIMode(deltaTime);
@@ -418,20 +459,19 @@ void GameController::update(float deltaTime) {
         // Handle second player (AI opponent)
         updateRemotePlayerInAIMode(deltaTime);
         
-        // Check for marathon victory (first to reach target lines)
-        int targetLines = TARGET_LINES;
-        int player1Lines = m_gameState.getGameMode() ? m_gameState.getGameMode()->getLinesCleared() : 0;
-        int player2Lines = m_remoteGameState.getGameMode() ? m_remoteGameState.getGameMode()->getLinesCleared() : 0;
+        // Check victory using MultiplayerGameMode
+        int winnerId = -1;
+        if (m_multiplayerMode) {
+            winnerId = m_multiplayerMode->checkVictory(m_gameState, m_remoteGameState);
+        }
         
-        bool marathonVictory = (player1Lines >= targetLines) || (player2Lines >= targetLines);
-        
-        // Check if game is over (marathon victory or board filled)
-        if (marathonVictory || m_gameState.isGameOver() || m_remoteGameState.isGameOver()) {
+        // Check if game is over (victory or board filled)
+        if (winnerId != -1 || m_gameState.isGameOver() || m_remoteGameState.isGameOver()) {
             // Determine the winner
-            if (player1Lines >= targetLines && player2Lines < targetLines) {
+            if (winnerId == 0) {
                 m_localAIModeWinnerId = 0;
                 m_localAIModeWinnerName = "Player 1";
-            } else if (player2Lines >= targetLines && player1Lines < targetLines) {
+            } else if (winnerId == 1) {
                 m_localAIModeWinnerId = 1;
                 m_localAIModeWinnerName = "Player 2";
             } else if (m_remoteGameState.isGameOver() && !m_gameState.isGameOver()) {
@@ -500,23 +540,15 @@ void GameController::update(float deltaTime) {
             if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Left)) {
                 m_gameState.moveLeft();
                 m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Left);
-                m_inputTimer = 0.0f;
             } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Right)) {
                 m_gameState.moveRight();
                 m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Right);
-                m_inputTimer = 0.0f;
             } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Down)) {
                 m_gameState.softDrop();
                 m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Down);
-                m_inputTimer = 0.0f;
             }
 
-            m_inputTimer += deltaTime;
-            if (m_inputTimer >= INPUT_DELAY) {
-                m_inputTimer = 0.0f;
-                processContinuousInput();
-            }
-
+            processContinuousInput(deltaTime);
             processDiscreteInput();
         }
         
@@ -574,80 +606,80 @@ void GameController::update(float deltaTime) {
     // Update game state (piece falling)
     m_gameState.update(deltaTime);
     
-    // Check if AI is controlling the player - if so, skip input processing
+    // Check if AI is controlling the player. If so, skip input processing
     bool isAIControlling = false;
     const auto* aiMode = dynamic_cast<const AIMode*>(m_gameState.getGameMode());
     if (aiMode) {
-        // Game mode is AIMode - AI plays automatically
+        // Game mode is AIMode
         isAIControlling = true;
     }
     
     // Only process input if AI is not controlling
     if (!isAIControlling) {
-        // Check for immediate key presses (first press, no delay)
-        // This ensures rapid key presses are never missed
+        // Check for immediate key presses
         if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Left)) {
             m_gameState.moveLeft();
             m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Left);
-            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
         } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Right)) {
             m_gameState.moveRight();
             m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Right);
-            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
         } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Down)) {
             m_gameState.softDrop();
             m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Down);
-            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
         }
         
-        // Process input with delay for held keys (throttled movement)
-        m_inputTimer += deltaTime;
-        if (m_inputTimer >= INPUT_DELAY) {
-            m_inputTimer = 0.0f;
-            processContinuousInput();
-        }
+        // Process continuous input
+        processContinuousInput(deltaTime);
         
-        // Process discrete input (rotation - no delay)
+        // Process discrete input
         processDiscreteInput();
     }
 }
 
 // Process input that can be held down (continuous input)
-// This is called with a delay to prevent moving too fast
-void GameController::processContinuousInput() {
-    // Handle left/right movement (can hold key down)
-    if (m_inputHandler.isLeftPressed()) {
-        m_gameState.moveLeft();
-    }
-    
-    if (m_inputHandler.isRightPressed()) {
-        m_gameState.moveRight();
-    }
-    
-    // Handle soft drop (down arrow - makes piece fall faster)
-    if (m_inputHandler.isDownPressed()) {
-        m_gameState.softDrop();
-    }
+void GameController::processContinuousInput(float deltaTime) {
+    const auto handleHold = [&](bool isPressed, bool& wasHeld, float& timer,
+                                float interval, const auto& action) {
+        if (isPressed) {
+            if (!wasHeld) {
+                wasHeld = true;
+                timer = 0.0f; // Start delay after the initial keypress move
+            } else {
+                timer += deltaTime;
+                if (timer >= interval) {
+                    action();
+                    timer = 0.0f;
+                }
+            }
+        } else {
+            wasHeld = false;
+            timer = 0.0f;
+        }
+    };
+
+    handleHold(m_inputHandler.isLeftPressed(), m_leftHeld, m_leftHoldTimer,
+               MOVE_REPEAT_INTERVAL, [this]() { m_gameState.moveLeft(); });
+    handleHold(m_inputHandler.isRightPressed(), m_rightHeld, m_rightHoldTimer,
+               MOVE_REPEAT_INTERVAL, [this]() { m_gameState.moveRight(); });
+    handleHold(m_inputHandler.isDownPressed(), m_downHeld, m_downHoldTimer,
+               SOFT_DROP_REPEAT_INTERVAL, [this]() { m_gameState.softDrop(); });
 }
 
-// Process input that happens once per key press (discrete input)
-// These actions happen immediately when you press the key
+// Process input that happens once per key press
 void GameController::processDiscreteInput() {
-    // Handle rotation (happens immediately when you press the key)
     if (m_inputHandler.isRotateClockwisePressed()) {
         m_gameState.rotateClockwise();
-        m_inputHandler.resetRotateFlags();  // Reset so it doesn't rotate again
+        m_inputHandler.resetRotateFlags();
     }
     
     if (m_inputHandler.isRotateCounterClockwisePressed()) {
         m_gameState.rotateCounterClockwise();
-        m_inputHandler.resetRotateFlags();  // Reset so it doesn't rotate again
+        m_inputHandler.resetRotateFlags();
     }
     
-    // Handle hard drop (happens immediately when you press space)
     if (m_inputHandler.isHardDropPressed()) {
         m_gameState.hardDrop();
-        m_inputHandler.resetHardDropFlag();  // Reset so it doesn't drop again
+        m_inputHandler.resetHardDropFlag();
     }
 }
 
@@ -699,7 +731,7 @@ void GameController::setLocalPlayerAI(bool enabled, bool useAdvanced) {
     m_aiMoveTimer = 0.0f;
     
     if (enabled) {
-        // Create the AI player (Advanced or Simple)
+        // Create the AI player
         m_aiPlayer = useAdvanced 
             ? std::make_unique<AdvancedAI>()
             : std::make_unique<SimpleAI>();
@@ -709,14 +741,14 @@ void GameController::setLocalPlayerAI(bool enabled, bool useAdvanced) {
     }
 }
 
-// Enable or disable AI for the second player (in local AI mode)
+// Enable or disable AI for the second player
 void GameController::setRemotePlayerAI(bool enabled, bool useAdvanced) {
     m_remotePlayerAI = enabled;
     m_remotePlayerAIAdvanced = useAdvanced;
     m_remoteAIMoveTimer = 0.0f;
     
     if (enabled) {
-        // Create the AI player (Advanced or Simple)
+        // Create the second AI player
         m_remoteAIPlayer = useAdvanced 
             ? std::make_unique<AdvancedAI>()
             : std::make_unique<SimpleAI>();
@@ -733,13 +765,14 @@ void GameController::makeAIMove(GameState& gameState, AIPlayer* aiPlayer, float&
     }
     
     // Check if enough time has passed and game is ready
-    if (moveTimer >= AI_MOVE_DELAY && 
+    float moveDelay = ConfigManager::getInstance().getAIMoveDelay();
+    if (moveTimer >= moveDelay && 
         !gameState.isClearingLines() && 
         !gameState.isGameOver()) {
         
         moveTimer = 0.0f;  // Reset timer
         
-        // Ask AI what move to make (rotation and column)
+        // Ask AI what move to make
         auto [rotation, column] = aiPlayer->chooseMove(gameState);
         
         // Apply the rotation
@@ -766,51 +799,43 @@ void GameController::makeAIMove(GameState& gameState, AIPlayer* aiPlayer, float&
     }
 }
 
-// Update local player in AI mode (either AI or human input)
+// Update local player in AI mode
 void GameController::updateLocalPlayerInAIMode(float deltaTime) {
     if (m_localPlayerAI && m_aiPlayer) {
         // Local player is AI - make AI move
         m_aiMoveTimer += deltaTime;
         makeAIMove(m_gameState, m_aiPlayer.get(), m_aiMoveTimer);
     } else {
-        // Local player is human - process keyboard input with throttling (same as single-player)
-        // Check for immediate key presses (first press, no delay)
+        // Local player is human - process keyboard input (same as single-player)
+        // Check for immediate key presses
         if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Left)) {
             m_gameState.moveLeft();
             m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Left);
-            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
         } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Right)) {
             m_gameState.moveRight();
             m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Right);
-            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
         } else if (m_inputHandler.wasKeyJustPressed(sf::Keyboard::Key::Down)) {
             m_gameState.softDrop();
             m_inputHandler.markKeyProcessed(sf::Keyboard::Key::Down);
-            m_inputTimer = 0.0f;  // Reset timer so held keys are throttled
         }
         
-        // Process input with delay for held keys (throttled movement)
-        m_inputTimer += deltaTime;
-        if (m_inputTimer >= INPUT_DELAY) {
-            m_inputTimer = 0.0f;
-            processContinuousInput();
-        }
+        // Process continuous input
+        processContinuousInput(deltaTime);
         
-        // Process discrete input (rotation - no delay)
+        // Process discrete input
         processDiscreteInput();
     }
 }
 
-// Update second player in AI mode (always AI)
+// Update second player in AI mode
 void GameController::updateRemotePlayerInAIMode(float deltaTime) {
     if (m_remotePlayerAI && m_remoteAIPlayer) {
-        // Second player is AI - make AI move
         m_remoteAIMoveTimer += deltaTime;
         makeAIMove(m_remoteGameState, m_remoteAIPlayer.get(), m_remoteAIMoveTimer);
     }
 }
 
-// Network helper: Convert GameState to PacketData for transmission
+//Convert GameState to PacketData for transmission in LAN Multiplayer mode
 PacketData GameController::gameStateToPacket(const GameState& state) {
     PacketData packet;
     
@@ -836,7 +861,7 @@ PacketData GameController::gameStateToPacket(const GameState& state) {
     return packet;
 }
 
-// Network helper: Apply PacketData to GameState
+//Apply PacketData to GameState
 void GameController::packetToGameState(const PacketData& packet, GameState& state) {
     // Sync the board by creating a temporary board with received grid data
     Board tempBoard;

@@ -1,7 +1,5 @@
 #include "InputHandler.h"
 
-// InputHandler: Tracks which keys are currently pressed
-// This allows the game to handle continuous movement (holding down arrow keys)
 
 // Initialize all keys as not pressed
 InputHandler::InputHandler()
@@ -15,60 +13,56 @@ InputHandler::InputHandler()
       m_rightJustPressed(false),
       m_downJustPressed(false) {}
 
-// Called when a key is pressed - remember that it's pressed
-// Note: Key repeat is disabled in main.cpp, so this is only called on actual key presses
+//remember key press for some keys
 void InputHandler::handleKeyPress(sf::Keyboard::Key key) {
     switch (key) {
         case sf::Keyboard::Key::Left:
-            m_leftPressed = true;  // Remember left arrow is pressed
-            m_leftJustPressed = true;  // Mark as just pressed for immediate processing
+            m_leftPressed = true;
+            m_leftJustPressed = true;
             break;
         case sf::Keyboard::Key::Right:
-            m_rightPressed = true;  // Remember right arrow is pressed
-            m_rightJustPressed = true;  // Mark as just pressed for immediate processing
+            m_rightPressed = true;
+            m_rightJustPressed = true;
             break;
         case sf::Keyboard::Key::Down:
-            m_downPressed = true;  // Remember down arrow is pressed (soft drop)
-            m_downJustPressed = true;  // Mark as just pressed for immediate processing
+            m_downPressed = true;
+            m_downJustPressed = true;
             break;
         case sf::Keyboard::Key::Up:
-            m_rotateClockwisePressed = true;  // Remember up arrow is pressed (rotate clockwise)
+            m_rotateClockwisePressed = true;
             break;
         case sf::Keyboard::Key::Z:
-            m_rotateCounterClockwisePressed = true;  // Remember Z is pressed (rotate counter-clockwise)
+            m_rotateCounterClockwisePressed = true;
             break;
         case sf::Keyboard::Key::Space:
-            m_hardDropPressed = true;  // Remember space is pressed (hard drop)
+            m_hardDropPressed = true;
             break;
         default:
-            // Other keys - ignore them
             break;
     }
 }
 
-// Called when a key is released - remember that it's no longer pressed
 void InputHandler::handleKeyRelease(sf::Keyboard::Key key) {
     switch (key) {
         case sf::Keyboard::Key::Left:
-            m_leftPressed = false;  // Left arrow is no longer pressed
+            m_leftPressed = false;
             break;
         case sf::Keyboard::Key::Right:
-            m_rightPressed = false;  // Right arrow is no longer pressed
+            m_rightPressed = false;
             break;
         case sf::Keyboard::Key::Down:
-            m_downPressed = false;  // Down arrow is no longer pressed
+            m_downPressed = false;
             break;
         case sf::Keyboard::Key::Up:
-            m_rotateClockwisePressed = false;  // Up arrow is no longer pressed
+            m_rotateClockwisePressed = false;
             break;
         case sf::Keyboard::Key::Z:
-            m_rotateCounterClockwisePressed = false;  // Z is no longer pressed
+            m_rotateCounterClockwisePressed = false;
             break;
         case sf::Keyboard::Key::Space:
-            m_hardDropPressed = false;  // Space is no longer pressed
+            m_hardDropPressed = false;
             break;
         default:
-            // Other keys - ignore them
             break;
     }
 }

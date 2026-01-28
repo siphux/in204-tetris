@@ -9,47 +9,32 @@
 // Forward declaration
 class GameMode;
 
-// GameState is responsible for:
-// - current piece
-// - board state
-// - score
-// - piece movement & gravity
-// - game mode management
+// GameState manages the overall state of the game with the current and next piece,
+// the board, score, piece movement and gravity, gamemode management.
+
 class GameState {
 public:
     GameState();
     ~GameState();
 
-    // Update the game logic (falling)
     void update(float deltaTime);
 
-    // Move piece horizontally
     void moveLeft();
     void moveRight();
-
-    // Rotate piece (with wall kicks)
     void rotateClockwise();
     void rotateCounterClockwise();
 
-    // Drop piece by one row (gravity or soft drop)
     void softDrop();
-
-    // Drop piece instantly to the bottom
     void hardDrop();
 
-    // Lock current piece into board and spawn a new piece
     void lockPiece();
 
-    // Update the clearing animation
     void updateClearingAnimation(float deltaTime);
 
-    void reset(); // Réinitialiser le jeu
-
-    // Game mode management
+    void reset(); 
     void setGameMode(std::unique_ptr<GameMode> mode);
     GameMode* getGameMode() const;
 
-    // Accessors for rendering
     const Board& board() const;
     const Tetromino& currentPiece() const;
     const Tetromino& nextPiece() const;
@@ -62,17 +47,12 @@ public:
     
     // Animation state accessors
     bool isClearingLines() const;
-    float getClearAnimationProgress() const; // Returns 0.0 to 1.0
+    float getClearAnimationProgress() const;
     
-    // Multiplayer: Add garbage lines at the bottom (for attacks)
     void addGarbageLines(int numLines);
     
-    // Network synchronization: Sync board state from serialized data
-    // This allows NetworkManager to update the board for multiplayer sync
     void syncBoard(const Board& board);
     
-    // Network synchronization: Sync opponent's falling piece position
-    // Used to display opponent's current piece on their side of the board
     void syncPiecePosition(int x, int y, int rotation);
 
 private:
@@ -88,15 +68,14 @@ private:
 
     bool m_gameOver;
 
-    int m_x; // current piece position X
-    int m_y; // current piece position Y
+    int m_x;
+    int m_y;
 
     float m_fallTimer;
 
     std::vector<TetrominoType> m_pieceBag;
     int m_bagIndex;
 
-    // Spawn a new piece at the top of the board
     void spawnNewPiece();
 
     void refillBag();

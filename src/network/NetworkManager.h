@@ -3,9 +3,9 @@
 #include <optional>
 #include <cstdint>
 
-// Simplified game state for network transmission (880 bytes fixed size)
+// simple game state for network transmission (880 bytes fixed size)
 struct PacketData {
-    int32_t grid[21][10];  // 21 rows x 10 columns (includes hidden spawn row)
+    int32_t grid[21][10];
     int32_t currentPieceType;
     int32_t currentPieceX;
     int32_t currentPieceY;
@@ -13,7 +13,7 @@ struct PacketData {
     int32_t score;
     int32_t level;
     bool isGameOver;
-    bool isReady;  // Player ready status
+    bool isReady;
     
     PacketData() {
         for (int y = 0; y < 21; y++) {
@@ -32,23 +32,22 @@ struct PacketData {
     }
 };
 
-// NetworkManager handles LAN multiplayer for Tetris
-// Uses non-blocking TCP sockets for real-time game state sync
+// NetworkManager handles LAN multiplayer for Tetris with non-blocking TCP sockets for real-time game state sync
 class NetworkManager {
 public:
     NetworkManager();
     ~NetworkManager();
     
-    // Host a game (act as server)
+    // Host a game
     bool host(unsigned short port = 53000);
     
-    // Connect to a host (act as client)
+    // Connect to a host
     bool connect(const std::string& ip, unsigned short port = 53000);
     
     // Disconnect and cleanup
     void disconnect();
     
-    // Check if we're connected (as host or client)
+    // Check if we're connected
     bool isConnected() const;
     
     // Check if we're the host
@@ -57,10 +56,10 @@ public:
     // Send our game state to opponent
     bool sendGameState(const PacketData& data);
     
-    // Receive opponent's game state (non-blocking)
+    // Receive opponent's game state
     std::optional<PacketData> receiveOpponentState();
     
-    // Update networking (call every frame) - handles accepting connections
+    // Update networking
     void update();
     
     // Get local IP for LAN play
@@ -70,13 +69,12 @@ private:
     bool m_isHost;
     bool m_isConnected;
     
-    // For host: listener + client socket
+    // For host
     sf::TcpListener m_listener;
-    sf::TcpSocket m_clientSocket;  // The connected peer
+    sf::TcpSocket m_clientSocket;
     
-    // For client: just the connection to host
-    sf::TcpSocket m_serverSocket;  // Connection to host
+    // For client
+    sf::TcpSocket m_serverSocket;
     
-    // Helper: get the active socket (host uses m_clientSocket, client uses m_serverSocket)
     sf::TcpSocket* getActiveSocket();
 };

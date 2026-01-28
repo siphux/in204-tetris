@@ -37,23 +37,17 @@ bool Board::checkCollision(const std::vector<Point>& blocks, int posX, int posY)
     for (const auto& block : blocks) {
         int x = posX + block.x;
         int y = posY + block.y;
-        
-        // Check horizontal bounds
         if (x < 0 || x >= Width) {
             return true;
         }
-
-        // Check vertical bounds (bottom)
         if (y >= Height) {
             return true;
         }
         
-        // Check if cell is occupied (only if inside vertical bounds)
-        // We allow y < 0 (above board)
         if (y >= 0 && m_grid[y][x] != 0) {
-            return true; // Collision
+            return true;
         }
     }
     
-    return false; // No collision
+    return false;
 }

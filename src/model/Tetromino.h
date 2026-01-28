@@ -2,7 +2,6 @@
 #include <vector>
 #include <array>
 
-// Simple 2D integer point
 struct Point {
     int x;
     int y;
@@ -11,12 +10,12 @@ struct Point {
     Point(int x, int y) : x(x), y(y) {}
 };
 
-// All possible tetromino types
+// Tetromino types
 enum class TetrominoType {
     I, J, L, O, S, T, Z
 };
 
-// Rotation state: 0=0°, 1=90°, 2=180°, 3=270°
+// Different rotations
 enum class RotationState {
     R0 = 0,
     R90 = 1,
@@ -24,8 +23,7 @@ enum class RotationState {
     R270 = 3
 };
 
-// Represents the shape of a tetromino with SRS (Super Rotation System).
-// Does NOT know about the board or collisions.
+// Tetromino class representing a Tetris piece with rotation and block positions
 class Tetromino {
 public:
     explicit Tetromino(TetrominoType type = TetrominoType::O);
